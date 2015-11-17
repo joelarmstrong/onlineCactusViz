@@ -5,8 +5,8 @@
 function buildCactusGraph() {
     // Margin boilerplate taken from gist mbostock/3019563
     var margin = {top: 20, right: 80, bottom: 20, left: 80},
-        width = 1800 - margin.left - margin.right,
-        height = 900 - margin.top - margin.bottom;
+        width = 1550 - margin.left - margin.right,
+        height = 350 - margin.top - margin.bottom;
 
     function zoom() {
         svg.selectAll("g.node")
@@ -39,29 +39,144 @@ function buildCactusGraph() {
     var diagonal = d3.svg.diagonal()
         .projection(function(d) { return [y(d.y), x(d.x)]; });
 
-    var data = newick.parseNewick("(a,(b,c))d;");
+    d3.text("/cactusDump2", function (text) {
+        var cactusTrees = [];
+        var lines = text.split("\n");
+        var pinchGraph = { nodes: {}, links: [] };
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            var fields = line.split("\t");
+            if (fields[0] == "C") {
+                cactusTrees.push(newick.parseNewick(fields[1]));
+            }
+            if (fields[0] == "P") {
+                if (!(fields[1] in pinchGraph.nodes)) {
+                    pinchGraph.nodes[fields[1]] = { name: fields[1] };
+                }
+                if (!(fields[2] in pinchGraph.nodes)) {
+                    pinchGraph.nodes[fields[2]] = { name: fields[2] };
+                }
+                pinchGraph.links.push({ source: pinchGraph.nodes[fields[1]],
+                                        target: pinchGraph.nodes[fields[2]],
+                                        name: fields[3],
+                                        degree: +fields[4],
+                                        length: +fields[5] });
+            }
+            if (fields[0] == "STEP") {
+                break;
+            }
+        }
+        var nodeArray = [];
+        for (var node in pinchGraph.nodes) {
+            nodeArray.push(pinchGraph.nodes[node]);
+        }
+        pinchGraph.nodes = nodeArray;
+        cactusTrees = cactusTrees.map(function (t) { return parseCactusTree(t) });
+        redraw(cactusTrees, pinchGraph);
+    });
+    function parseCactusTree(tree) {
+        var regex = /(NET|CHAIN)(.*)/;
+        var results = regex.exec(tree.name);
+        var type = results[1];
+        var name = results[2];
+        tree.name = name;
+        tree.type = type;
+        if ('children' in tree) {
+            tree.children = tree.children.map(function (child) {
+                // ignore the block for now.
+                return parseCactusTree(child.children[0]);
+            });
+        }
+        console.log(tree);
+        return tree;
+    }
+    function redraw(trees, pinch) {
+        var pinchSvg = d3.select("#pinchGraph").append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom);
+        var force = d3.layout.force()
+            .size([width, height])
+            .nodes(pinch.nodes).links(pinch.links)
+            .gravity(0.06)
+            .linkDistance(function (d) { return d.length }).start();
 
-    var nodes = tree.nodes(data),
-        links = tree.links(nodes);
+        function mouseoverNode() {
+            var node = d3.select(this);
+            node.append("text")
+                .attr("dx", function(d) { return d.children ? -8 : 8; })
+                .attr("dy", 3)
+                .attr("text-anchor", function(d) { return d.children ? "end" : "start"; })
+                .text(function(d) { return d.name; });
 
-    svg.selectAll("path.link")
-        .data(links)
-        .enter().append("path")
-        .attr("class", "link")
-        .attr("d", diagonal);
+            node.select("circle").classed("active", true);
+            node.select("rect").classed("active", true);
+        }
+        function mouseoutNode() {
+            var node = d3.select(this)
+            node.select("circle").classed("active", false);
+            node.select("rect").classed("active", false);
+            node.select("text").remove();
+        }
 
-    var node = svg.selectAll("g.node")
-        .data(nodes)
-        .enter().append("g")
-        .attr("class", "node")
-        .attr("transform", function(d) { return "translate(" + y(d.y) + "," + x(d.x) + ")"; });
+        var pinchLink = pinchSvg.selectAll(".link")
+            .data(pinch.links)
+            .enter()
+            .append("line")
+            .attr("class", "link");
+            // .on("mouseover", mouseover)
+            // .on("mouseout", mouseout);
+        var pinchNode = pinchSvg.selectAll(".node")
+            .data(pinch.nodes)
+            .enter()
+            .append("g")
+            .attr("class", "node")
+            .append("circle")
+            .attr("r", 4.5)
+            .call(force.drag);
+            // .on("mouseover", mouseover)
+            // .on("mouseout", mouseout);
 
-    node.append("circle")
-        .attr("r", 4.5);
+        force.on("tick", function () {
+            pinchLink.attr("x1", function(d) { return d.source.x; })
+                .attr("y1", function(d) { return d.source.y; })
+                .attr("x2", function(d) { return d.target.x; })
+                .attr("y2", function(d) { return d.target.y; });
 
-    node.append("text")
-        .attr("dx", function(d) { return d.children ? -8 : 8; })
-        .attr("dy", 3)
-        .attr("text-anchor", function(d) { return d.children ? "end" : "start"; })
-        .text(function(d) { return d.name; });
+            pinchNode.attr("cx", function(d) { return d.x; })
+                .attr("cy", function(d) { return d.y; });
+        });
+        trees.forEach(function (data) {
+            console.log(data);
+            var nodes = tree.nodes(data),
+                links = tree.links(nodes);
+
+            svg.selectAll("path.link")
+                .data(links)
+                .enter().append("path")
+                .attr("class", "link")
+                .attr("d", diagonal);
+                // .on("mouseover", mouseover)
+                // .on("mouseout", mouseout);
+
+            var node = svg.selectAll("g.node")
+                .data(nodes)
+                .enter().append("g")
+                .attr("class", "node")
+                .attr("transform", function(d) { return "translate(" + y(d.y) + "," + x(d.x) + ")"; })
+                .on("mouseover", mouseoverNode)
+                .on("mouseout", mouseoutNode)
+                .append(function (d) {
+                    if (d.type == "NET") {
+                        var elem = document.createElementNS(d3.ns.prefix.svg, "circle");
+                        d3.select(elem).attr("r", 4.5);
+                        return elem;
+                    } else if (d.type == "CHAIN") {
+                        var elem = document.createElementNS(d3.ns.prefix.svg, "rect");
+                        d3.select(elem).attr("width", 9).attr("height", 9)
+                            .attr("transform", "translate(-4.5, -4.5)");
+                        return elem;
+                    }
+                });
+        });
+    }
 }
