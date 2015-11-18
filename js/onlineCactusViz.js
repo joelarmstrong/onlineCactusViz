@@ -98,12 +98,13 @@ function buildCactusGraph() {
         return tree;
     }
     function redraw(trees, pinch, nodeToNet, netToNodes) {
-        var pinchSvg = d3.select("#pinchGraph").append("svg")
+        var pinchG = d3.select("#pinchGraph").append("svg")
             .attr("width", width + margin.left + margin.right)
             .attr("height", height + margin.top + margin.bottom)
-            .call(d3.behavior.zoom().on("zoom", zoomPinch));
+            .call(d3.behavior.zoom().on("zoom", zoomPinch))
+            .append("g");
         function zoomPinch() {
-            pinchSvg.attr("transform", "translate(" + d3.event.translate + ")"
+            pinchG.attr("transform", "translate(" + d3.event.translate + ")"
                           + " scale(" + d3.event.scale + ")");
         }
         var force = d3.layout.force()
@@ -146,7 +147,7 @@ function buildCactusGraph() {
             node.select("text").remove();
         }
 
-        var pinchLink = pinchSvg.selectAll(".link")
+        var pinchLink = pinchG.selectAll(".link")
             .data(pinch.links)
             .enter()
             .append("line")
@@ -154,7 +155,7 @@ function buildCactusGraph() {
             .style("stroke-width", function (d) { return d.degree; });
             // .on("mouseover", mouseover)
             // .on("mouseout", mouseout);
-        var pinchNode = pinchSvg.selectAll(".node")
+        var pinchNode = pinchG.selectAll(".node")
             .data(pinch.nodes)
             .enter()
             .append("g")
@@ -194,16 +195,21 @@ function buildCactusGraph() {
                 .on("mouseover", mouseoverNode)
                 .on("mouseout", mouseoutNode)
                 .append(function (d) {
+                    var elem;
                     if (d.type == "NET") {
-                        var elem = document.createElementNS(d3.ns.prefix.svg, "circle");
+                        // Nets are represented by a circle.
+                        elem = document.createElementNS(d3.ns.prefix.svg, "circle");
                         d3.select(elem).attr("r", 4.5);
-                        return elem;
                     } else if (d.type == "CHAIN") {
-                        var elem = document.createElementNS(d3.ns.prefix.svg, "rect");
+                        // Chains are represented by a square. Since
+                        // rects have their top-left corner at their
+                        // x,y coordinates, we need to shift it a bit
+                        // to center it properly.
+                        elem = document.createElementNS(d3.ns.prefix.svg, "rect");
                         d3.select(elem).attr("width", 9).attr("height", 9)
                             .attr("transform", "translate(-4.5, -4.5)");
-                        return elem;
                     }
+                    return elem;
                 });
         });
     }
