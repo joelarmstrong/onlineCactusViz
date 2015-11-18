@@ -101,12 +101,12 @@ function buildCactusGraph() {
         var pinchG = d3.select("#pinchGraph").append("svg")
             .attr("width", width + margin.left + margin.right)
             .attr("height", height + margin.top + margin.bottom)
-            .call(d3.behavior.zoom().on("zoom", zoomPinch))
+            .call(d3.behavior.zoom().on("zoom", function () {
+                pinchG.attr("transform", "translate(" + d3.event.translate + ")"
+                            + " scale(" + d3.event.scale + ")");
+            }))
             .append("g");
-        function zoomPinch() {
-            pinchG.attr("transform", "translate(" + d3.event.translate + ")"
-                          + " scale(" + d3.event.scale + ")");
-        }
+
         var force = d3.layout.force()
             .size([width, height])
             .nodes(pinch.nodes).links(pinch.links)
@@ -162,8 +162,9 @@ function buildCactusGraph() {
             .attr("class", "node")
             .call(drag)
             .on("mouseover", mouseoverNode)
-            .on("mouseout", mouseoutNode)
-            .append("circle")
+            .on("mouseout", mouseoutNode);
+
+        pinchNode.append("circle")
             .attr("r", 4.5);
 
         force.on("tick", function () {
@@ -172,8 +173,7 @@ function buildCactusGraph() {
                 .attr("x2", function(d) { return d.target.x; })
                 .attr("y2", function(d) { return d.target.y; });
 
-            pinchNode.attr("cx", function(d) { return d.x; })
-                .attr("cy", function(d) { return d.y; });
+            pinchNode.attr("transform", function(d) { return "translate(" + d.x + ", " + d.y + ")"; });
         });
         trees.forEach(function (data) {
             var nodes = tree.nodes(data),
