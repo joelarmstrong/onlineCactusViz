@@ -43,6 +43,8 @@ function buildCactusGraph() {
         var cactusTrees = [];
         var lines = text.split("\n");
         var pinchGraph = { nodes: {}, links: [] };
+        var nodeToNet = {};
+        var netToNode = {};
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
             var fields = line.split("\t");
@@ -62,6 +64,12 @@ function buildCactusGraph() {
                                         degree: +fields[4],
                                         length: +fields[5] });
             }
+            if (fields[0] == 'M') {
+                netToNode[fields[1]] = fields.slice(2);
+                fields.slice(2).forEach(function (node) {
+                    nodeToNet[node] = fields[1];
+                });
+            }
             if (fields[0] == "STEP") {
                 break;
             }
@@ -71,8 +79,8 @@ function buildCactusGraph() {
             nodeArray.push(pinchGraph.nodes[node]);
         }
         pinchGraph.nodes = nodeArray;
-        cactusTrees = cactusTrees.map(function (t) { return parseCactusTree(t) });
-        redraw(cactusTrees, pinchGraph);
+        cactusTrees = cactusTrees.map(function (t) { return parseCactusTree(t); });
+        redraw(cactusTrees, pinchGraph, nodeToNet, netToNode);
     });
     function parseCactusTree(tree) {
         var regex = /(NET|CHAIN)(.*)/;
@@ -87,21 +95,40 @@ function buildCactusGraph() {
                 return parseCactusTree(child.children[0]);
             });
         }
-        console.log(tree);
         return tree;
     }
-    function redraw(trees, pinch) {
+    function redraw(trees, pinch, nodeToNet, netToNodes) {
         var pinchSvg = d3.select("#pinchGraph").append("svg")
             .attr("width", width + margin.left + margin.right)
-            .attr("height", height + margin.top + margin.bottom);
+            .attr("height", height + margin.top + margin.bottom)
+            .call(d3.behavior.zoom().on("zoom", zoomPinch));
+        function zoomPinch() {
+            pinchSvg.attr("transform", "translate(" + d3.event.translate + ")"
+                          + " scale(" + d3.event.scale + ")");
+        }
         var force = d3.layout.force()
             .size([width, height])
             .nodes(pinch.nodes).links(pinch.links)
             .gravity(0.06)
-            .linkDistance(function (d) { return d.length }).start();
+            .linkDistance(function (d) { return d.length; }).start();
+        var drag = force.drag()
+            .on("dragstart", function() { d3.event.sourceEvent.stopPropagation(); });
 
-        function mouseoverNode() {
-            var node = d3.select(this);
+        function selectCorrespondingNetAndNodes(d) {
+            var nodeName = d.name;
+            return d3.selectAll(".node").filter(function(d) {
+                if (d.name == nodeName) {
+                    return true;
+                }
+                if (nodeName in nodeToNet) {
+                    return d.name == nodeToNet[nodeName];
+                } else {
+                    return netToNodes[nodeName].some(function (x) { return x == d.name; });
+                }
+            });
+        }
+        function mouseoverNode(d) {
+            var node = selectCorrespondingNetAndNodes(d);
             node.append("text")
                 .attr("dx", function(d) { return d.children ? -8 : 8; })
                 .attr("dy", 3)
@@ -111,8 +138,9 @@ function buildCactusGraph() {
             node.select("circle").classed("active", true);
             node.select("rect").classed("active", true);
         }
-        function mouseoutNode() {
-            var node = d3.select(this)
+
+        function mouseoutNode(d) {
+            var node = selectCorrespondingNetAndNodes(d);
             node.select("circle").classed("active", false);
             node.select("rect").classed("active", false);
             node.select("text").remove();
@@ -122,7 +150,8 @@ function buildCactusGraph() {
             .data(pinch.links)
             .enter()
             .append("line")
-            .attr("class", "link");
+            .attr("class", "link")
+            .style("stroke-width", function (d) { return d.degree; });
             // .on("mouseover", mouseover)
             // .on("mouseout", mouseout);
         var pinchNode = pinchSvg.selectAll(".node")
@@ -130,11 +159,11 @@ function buildCactusGraph() {
             .enter()
             .append("g")
             .attr("class", "node")
+            .call(drag)
+            .on("mouseover", mouseoverNode)
+            .on("mouseout", mouseoutNode)
             .append("circle")
-            .attr("r", 4.5)
-            .call(force.drag);
-            // .on("mouseover", mouseover)
-            // .on("mouseout", mouseout);
+            .attr("r", 4.5);
 
         force.on("tick", function () {
             pinchLink.attr("x1", function(d) { return d.source.x; })
@@ -146,7 +175,6 @@ function buildCactusGraph() {
                 .attr("cy", function(d) { return d.y; });
         });
         trees.forEach(function (data) {
-            console.log(data);
             var nodes = tree.nodes(data),
                 links = tree.links(nodes);
 
@@ -158,7 +186,7 @@ function buildCactusGraph() {
                 // .on("mouseover", mouseover)
                 // .on("mouseout", mouseout);
 
-            var node = svg.selectAll("g.node")
+            svg.selectAll("g.node")
                 .data(nodes)
                 .enter().append("g")
                 .attr("class", "node")
