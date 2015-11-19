@@ -8,15 +8,6 @@ function buildCactusGraph() {
         width = 1550 - margin.left - margin.right,
         height = 350 - margin.top - margin.bottom;
 
-    function zoom() {
-        svg.selectAll("g.node")
-            .attr("transform", function (d) {
-                return "translate(" + y(d.y) + "," + x(d.x) + ")";
-            });
-        svg.selectAll("path.link")
-            .attr("d", diagonal);
-    }
-
     var x = d3.scale.linear()
         .domain([0, width])
         .range([0, width]);
@@ -28,7 +19,14 @@ function buildCactusGraph() {
     var svg = d3.select("#cactusGraph").append("svg")
         .attr("width", width + margin.left + margin.right)
         .attr("height", height + margin.top + margin.bottom)
-        .call(d3.behavior.zoom().x(y).y(x).on("zoom", zoom))
+        .call(d3.behavior.zoom().x(y).y(x).on("zoom", function () {
+            svg.selectAll("g.node")
+                .attr("transform", function (d) {
+                    return "translate(" + y(d.y) + "," + x(d.x) + ")";
+                });
+            svg.selectAll("path.link")
+                .attr("d", diagonal);
+        }))
         .append("g")
         .append("g")
         .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
@@ -83,19 +81,29 @@ function buildCactusGraph() {
         redraw(cactusTrees, pinchGraph, nodeToNet, netToNode);
     });
     function parseCactusTree(tree) {
-        var regex = /(NET|CHAIN)(.*)/;
-        var results = regex.exec(tree.name);
-        var type = results[1];
-        var name = results[2];
-        tree.name = name;
-        tree.type = type;
-        if ('children' in tree) {
-            tree.children = tree.children.map(function (child) {
-                // ignore the block for now.
-                return parseCactusTree(child.children[0]);
-            });
+        var links = [];
+        function recurse(subtree) {
+            var nodeRegex = /(NET|CHAIN)(.*)/;
+            var results = nodeRegex.exec(subtree.name);
+            var type = results[1];
+            var name = results[2];
+            subtree.name = name;
+            subtree.type = type;
+            if ('children' in subtree) {
+                subtree.children = subtree.children.map(function (child) {
+                    var blockRegex = /BLOCK(.*)/;
+                    var results = blockRegex.exec(child.name);
+                    var name = results[1];
+                    var grandChild = recurse(child.children[0]);
+                    links.push({ name: name, source: subtree, target: grandChild});
+                    return grandChild;
+                });
+            }
+            return subtree;
         }
-        return tree;
+        tree = recurse(tree);
+        var ret = { tree: tree, links: links };
+        return ret;
     }
     function redraw(trees, pinch, nodeToNet, netToNodes) {
         var pinchG = d3.select("#pinchGraph").append("svg")
@@ -117,12 +125,12 @@ function buildCactusGraph() {
 
         function selectCorrespondingNetAndNodes(d) {
             var nodeName = d.name;
-            return d3.selectAll(".node").filter(function(d) {
-                if (d.name == nodeName) {
+            return d3.selectAll("g.node").filter(function(d) {
+                if (d.name === nodeName) {
                     return true;
                 }
                 if (nodeName in nodeToNet) {
-                    return d.name == nodeToNet[nodeName];
+                    return d.name === nodeToNet[nodeName];
                 } else {
                     return netToNodes[nodeName].some(function (x) { return x == d.name; });
                 }
@@ -131,6 +139,7 @@ function buildCactusGraph() {
         function mouseoverNode(d) {
             var node = selectCorrespondingNetAndNodes(d);
             node.append("text")
+                .attr("class", "label")
                 .attr("dx", function(d) { return d.children ? -8 : 8; })
                 .attr("dy", 3)
                 .attr("text-anchor", function(d) { return d.children ? "end" : "start"; })
@@ -147,14 +156,40 @@ function buildCactusGraph() {
             node.select("text").remove();
         }
 
+        function mouseoverLink(d) {
+            var link = d3.selectAll("g.link").filter(function(d2) {
+                return d.name === d2.name;
+            });
+            link.select(".link").classed("active", true);
+            link.append("text")
+                .attr("class", "label")
+                .attr("x", (d.source.x + d.target.x) / 2)
+                .attr("y", (d.source.y + d.target.y) / 2)
+                .attr("dx", -10)
+                .attr("dy", 20)
+                .text(function (d) {
+                    return d.name + "\ndegree: " + d.degree + "\nlength: " + d.length;
+                });
+        }
+
+        function mouseoutLink(d) {
+            var link = d3.selectAll(".link").filter(function(d2) {
+                return d.name === d2.name;
+            });
+            link.select(".link").classed("active", false);
+            link.select("text").remove();
+        }
+
         var pinchLink = pinchG.selectAll(".link")
             .data(pinch.links)
             .enter()
+            .append("g")
+            .attr("class", "link")
             .append("line")
             .attr("class", "link")
-            .style("stroke-width", function (d) { return d.degree; });
-            // .on("mouseover", mouseover)
-            // .on("mouseout", mouseout);
+            .style("stroke-width", function (d) { return d.degree; })
+            .on("mouseover", mouseoverLink)
+            .on("mouseout", mouseoutLink);
         var pinchNode = pinchG.selectAll(".node")
             .data(pinch.nodes)
             .enter()
@@ -176,16 +211,19 @@ function buildCactusGraph() {
             pinchNode.attr("transform", function(d) { return "translate(" + d.x + ", " + d.y + ")"; });
         });
         trees.forEach(function (data) {
-            var nodes = tree.nodes(data),
-                links = tree.links(nodes);
+            var nodes = tree.nodes(data.tree),
+                links = data.links;
 
             svg.selectAll("path.link")
                 .data(links)
-                .enter().append("path")
+                .enter()
+                .append("g")
                 .attr("class", "link")
-                .attr("d", diagonal);
-                // .on("mouseover", mouseover)
-                // .on("mouseout", mouseout);
+                .append("path")
+                .attr("class", "link")
+                .attr("d", diagonal)
+                .on("mouseover", mouseoverLink)
+                .on("mouseout", mouseoutLink);
 
             svg.selectAll("g.node")
                 .data(nodes)
