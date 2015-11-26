@@ -2,6 +2,112 @@
 /*global newick*/
 /*exported buildCactusGraph*/
 /*eslint-env browser*/
+function pinchLayout(pinchData) {
+    var pinch = {};
+    var separation = 20;
+    var blockLength = 20;
+    pinch.blocks = pinchData.blocks;
+    var nameToBlock = {};
+    pinch.blocks.forEach(function (b) { nameToBlock[b.name] = b; });
+    pinch.ends = d3.merge(pinch.blocks.map(function (block) {
+        block.end0 = { block: block, orientation: 0 };
+        block.end1 = { block: block, orientation: 1 };
+        return [block.end0, block.end1];
+    }));
+    var threadIdToSegments = {};
+    pinch.adjacencies = d3.merge(pinch.blocks.map(function (block) {
+        var leftAdjacencies = [];
+        var rightAdjacencies = [];
+        block.segments.forEach(function (segment) {
+            segment.block = block;
+            threadIdToSegments[segment.threadId] = threadIdToSegments[segment.threadId] || [];
+            threadIdToSegments[segment.threadId].push(segment);
+
+            var createAdjacency = function(otherBlock) {
+                var adjacency = {};
+                adjacency.threadId = segment.threadId;
+                // FIXME: this is so ugly
+                var otherSegment = d3.min(nameToBlock[otherBlock].segments
+                                          .filter(function (s) { return s.threadId === segment.threadId; }),
+                                          function (s) {
+                                              return [s, d3.min([Math.abs(s.start - segment.end),
+                                                             Math.abs(s.end - segment.start)])];
+                                          }, function (e) { return e[1]; })[0];
+                if (segment.blockOrientation === "+") {
+                    adjacency.source = segment.block.end1;
+                } else {
+                    adjacency.source = segment.block.end0;
+                }
+                if (otherSegment.blockOrientation === "+") {
+                    adjacency.target = nameToBlock[otherBlock].end0;
+                } else {
+                    adjacency.target = nameToBlock[otherBlock].end1;
+                }
+                adjacency.length = otherSegment.start - segment.end;
+                return adjacency;
+            };
+            if (segment.rightAdjacentBlock !== "(nil)") {
+                segment.rightAdjacency = createAdjacency(segment.rightAdjacentBlock);
+                rightAdjacencies.push(segment.rightAdjacency);
+            }
+        });
+        return d3.merge([leftAdjacencies, rightAdjacencies]);
+    }));
+
+    // Find multiplicity of adjacencies, so they can be drawn without overlap.
+    var adjacencyMultiplicity = {};
+    pinch.adjacencies.forEach(function (a) {
+        var min = d3.min([a.source.block.name, a.target.block.name]);
+        var max = d3.max([a.source.block.name, a.target.block.name]);
+        adjacencyMultiplicity[min] = adjacencyMultiplicity[min] || {};
+        adjacencyMultiplicity[min][max] = adjacencyMultiplicity[min][max] || [];
+        adjacencyMultiplicity[min][max].push(a);
+    });
+    for (var i in adjacencyMultiplicity) {
+        for (var j in adjacencyMultiplicity[i]) {
+            var adjacencies = adjacencyMultiplicity[i][j];
+            for (var k = 0; k < adjacencies.length; k++) {
+                adjacencies[k].multiplicity = adjacencies.length;
+                adjacencies[k].adjNumber = k;
+            }
+        }
+    }
+
+    // Greedy layout of pinches: pick an arbitrary thread to start,
+    // draw its first block, then iteratively draw the next remaining block
+    // with the shortest adjacency length.
+    var drawnBlocks = d3.set();
+    for (var threadId in threadIdToSegments) {
+        var sortedSegments = threadIdToSegments[threadId].sort(function (s1, s2) { return s1.start - s2.start; });
+        var blockStack = [sortedSegments[0].block];
+        var curX = 0;
+        var curY = 0;
+        while (blockStack.length > 0) {
+            var block = blockStack.pop();
+            if (drawnBlocks.has(block.name)) {
+                break;
+            }
+
+            block.end0.x = curX;
+            block.end0.y = curY;
+            curX += blockLength;
+            block.end1.x = curX;
+            block.end1.y = curY;
+            curX += separation;
+
+            block.segments.forEach(function (segment) {
+                if (segment.rightAdjacentBlock !== "(nil)") {
+                    blockStack.push(nameToBlock[segment.rightAdjacentBlock]);
+                }
+            });
+
+            drawnBlocks.add(block.name);
+        }
+        curY += separation;
+    }
+    return pinch;
+}
+
 function buildCactusGraph() {
     // Margin boilerplate taken from gist mbostock/3019563
     var margin = {top: 20, right: 80, bottom: 20, left: 80},
@@ -40,30 +146,36 @@ function buildCactusGraph() {
     d3.text("/cactusDump2", function (text) {
         var cactusTrees = [];
         var lines = text.split("\n");
-        var pinchGraph = { nodes: {}, links: [] };
+        var pinchGraph = { blocks: [] };
         var nodeToNet = {};
-        var netToNode = {};
+        var netToNodes = {};
+        function sextuplets(array) {
+            var ret = [];
+            for (var i = 0; i < array.length; i += 6) {
+                ret.push([array[i], array[i + 1], array[i + 2], array[i + 3],
+                          array[i + 4], array[i + 5]]);
+            }
+            return ret;
+        }
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i];
             var fields = line.split("\t");
             if (fields[0] == "C") {
                 cactusTrees.push(newick.parseNewick(fields[1]));
             }
-            if (fields[0] == "P") {
-                if (!(fields[1] in pinchGraph.nodes)) {
-                    pinchGraph.nodes[fields[1]] = { name: fields[1] };
-                }
-                if (!(fields[2] in pinchGraph.nodes)) {
-                    pinchGraph.nodes[fields[2]] = { name: fields[2] };
-                }
-                pinchGraph.links.push({ source: pinchGraph.nodes[fields[1]],
-                                        target: pinchGraph.nodes[fields[2]],
-                                        name: fields[3],
-                                        degree: +fields[4],
-                                        length: +fields[5] });
+            if (fields[0] == 'G') {
+                pinchGraph.blocks.push({ name: fields[1],
+                                         segments: sextuplets(fields.slice(2)).map(function (segment) {
+                                             return { threadId: segment[0],
+                                                      start: +segment[1],
+                                                      end: +segment[2],
+                                                      rightAdjacentBlock: segment[3],
+                                                      leftAdjacentBlock: segment[4],
+                                                      blockOrientation: segment[5] };
+                                         }) });
             }
             if (fields[0] == 'M') {
-                netToNode[fields[1]] = fields.slice(2);
+                netToNodes[fields[1]] = fields.slice(2);
                 fields.slice(2).forEach(function (node) {
                     nodeToNet[node] = fields[1];
                 });
@@ -78,7 +190,7 @@ function buildCactusGraph() {
         }
         pinchGraph.nodes = nodeArray;
         cactusTrees = cactusTrees.map(function (t) { return parseCactusTree(t); });
-        redraw(cactusTrees, pinchGraph, nodeToNet, netToNode);
+        redraw(cactusTrees, pinchGraph, nodeToNet, netToNodes);
     });
     function parseCactusTree(tree) {
         var links = [];
@@ -105,23 +217,17 @@ function buildCactusGraph() {
         var ret = { tree: tree, links: links };
         return ret;
     }
-    function redraw(trees, pinch, nodeToNet, netToNodes) {
+    function redraw(trees, pinchData, nodeToNet, netToNodes) {
+        var pinch = pinchLayout(pinchData);
         var pinchG = d3.select("#pinchGraph").append("svg")
             .attr("width", width + margin.left + margin.right)
             .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
             .call(d3.behavior.zoom().on("zoom", function () {
                 pinchG.attr("transform", "translate(" + d3.event.translate + ")"
                             + " scale(" + d3.event.scale + ")");
-            }))
-            .append("g");
-
-        var force = d3.layout.force()
-            .size([width, height])
-            .nodes(pinch.nodes).links(pinch.links)
-            .gravity(0.06)
-            .linkDistance(function (d) { return d.length; }).start();
-        var drag = force.drag()
-            .on("dragstart", function() { d3.event.sourceEvent.stopPropagation(); });
+            }));
 
         function selectCorrespondingNetAndNodes(d) {
             var nodeName = d.name;
@@ -180,36 +286,59 @@ function buildCactusGraph() {
             link.select("text").remove();
         }
 
-        var pinchLink = pinchG.selectAll(".link")
-            .data(pinch.links)
+        function pinchAdjacencyPath(d) {
+            /* Draw the path for a pinch adjacency so that:
+               - multiple adjacencies are clearly separated
+               - long adjacencies are separated from the rest, even if
+                 there is no change in y */
+
+            var apexX = (d.source.x + d.target.x) / 2;
+            var apexY = (d.source.y + d.target.y) / 2;
+            if (d.multiplicity % 2 === 0 && d.adjNumber === 0) {
+                apexY += 30 * Math.pow(-1, d.adjNumber);
+            } else {
+                apexY += d.adjNumber * 30 * Math.pow(-1, d.adjNumber);
+            }
+            if (Math.abs(d.target.x - d.source.x) > 20) {
+                apexY += d.target.x - d.source.x;
+            }
+            return "M " + d.source.x + " " + d.source.y 
+                + " Q " + apexX + " " + apexY
+                + " " + d.target.x + " " + d.target.y;
+        }
+
+        var pinchAdjacency = pinchG.selectAll(".adjacency")
+            .data(pinch.adjacencies)
             .enter()
-            .append("g")
-            .attr("class", "link")
+            .append("path")
+            .attr("d", pinchAdjacencyPath)
+            .attr("test", function (d) { return d.adjNumber; })
+            .attr("multiplicity", function (d) { return d.multiplicity; })
+            .attr("class", "adjacency");
+
+        var pinchBlock = pinchG.selectAll(".block")
+            .data(pinch.blocks)
+            .enter()
             .append("line")
-            .attr("class", "link")
-            .style("stroke-width", function (d) { return d.degree; })
-            .on("mouseover", mouseoverLink)
-            .on("mouseout", mouseoutLink);
+            .attr("class", "block")
+            .attr("x1", function (d) { return d.end0.x })
+            .attr("y1", function (d) { return d.end0.y })
+            .attr("x2", function (d) { return d.end1.x })
+            .attr("y2", function (d) { return d.end1.y });
+
         var pinchNode = pinchG.selectAll(".node")
-            .data(pinch.nodes)
+            .data(pinch.ends)
             .enter()
             .append("g")
             .attr("class", "node")
-            .call(drag)
             .on("mouseover", mouseoverNode)
             .on("mouseout", mouseoutNode);
 
         pinchNode.append("circle")
-            .attr("r", 4.5);
+            .attr("r", 4.5)
+            .attr("cx", function (d) { return d.x; })
+            .attr("cy", function (d) { return d.y; });
 
-        force.on("tick", function () {
-            pinchLink.attr("x1", function(d) { return d.source.x; })
-                .attr("y1", function(d) { return d.source.y; })
-                .attr("x2", function(d) { return d.target.x; })
-                .attr("y2", function(d) { return d.target.y; });
-
-            pinchNode.attr("transform", function(d) { return "translate(" + d.x + ", " + d.y + ")"; });
-        });
         trees.forEach(function (data) {
             var nodes = tree.nodes(data.tree),
                 links = data.links;
