@@ -218,16 +218,19 @@ function buildCactusGraph() {
         return ret;
     }
     function redraw(trees, pinchData, nodeToNet, netToNodes) {
+        var pinchZoom = d3.behavior.zoom().on("zoom", function () {
+            zoomContainer.attr("transform", "translate(" + d3.event.translate + ")"
+                        + "scale(" + d3.event.scale + ")");
+        });
         var pinch = pinchLayout(pinchData);
         var pinchG = d3.select("#pinchGraph").append("svg")
             .attr("width", width + margin.left + margin.right)
             .attr("height", height + margin.top + margin.bottom)
+            .call(pinchZoom)
             .append("g")
-            .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
-            .call(d3.behavior.zoom().on("zoom", function () {
-                pinchG.attr("transform", "translate(" + d3.event.translate + ")"
-                            + " scale(" + d3.event.scale + ")");
-            }));
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+        var zoomContainer = pinchG.append("g")
 
         function selectCorrespondingNetAndNodes(d) {
             var nodeName = d.name;
@@ -296,8 +299,10 @@ function buildCactusGraph() {
             var apexY = (d.source.y + d.target.y) / 2;
             if (d.multiplicity % 2 === 0 && d.adjNumber === 0) {
                 apexY += 30 * Math.pow(-1, d.adjNumber);
-            } else {
+            } else if (d.multiplicity % 2 === 0) {
                 apexY += d.adjNumber * 30 * Math.pow(-1, d.adjNumber);
+            } else {
+                apexY += Math.ceil(d.adjNumber / 2) * 30 * Math.pow(-1, d.adjNumber);
             }
             if (Math.abs(d.target.x - d.source.x) > 20) {
                 apexY += d.target.x - d.source.x;
@@ -307,7 +312,7 @@ function buildCactusGraph() {
                 + " " + d.target.x + " " + d.target.y;
         }
 
-        var pinchAdjacency = pinchG.selectAll(".adjacency")
+        var pinchAdjacency = zoomContainer.selectAll(".adjacency")
             .data(pinch.adjacencies)
             .enter()
             .append("path")
@@ -316,7 +321,7 @@ function buildCactusGraph() {
             .attr("multiplicity", function (d) { return d.multiplicity; })
             .attr("class", "adjacency");
 
-        var pinchBlock = pinchG.selectAll(".block")
+        var pinchBlock = zoomContainer.selectAll(".block")
             .data(pinch.blocks)
             .enter()
             .append("line")
@@ -326,7 +331,7 @@ function buildCactusGraph() {
             .attr("x2", function (d) { return d.end1.x })
             .attr("y2", function (d) { return d.end1.y });
 
-        var pinchNode = pinchG.selectAll(".node")
+        var pinchNode = zoomContainer.selectAll(".node")
             .data(pinch.ends)
             .enter()
             .append("g")
