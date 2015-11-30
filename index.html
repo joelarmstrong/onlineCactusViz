@@ -54,7 +54,10 @@ text.label {
     <div id="cactusGraph" style="border-width: 2px; border-style: solid"></div>
     <div id="pinchGraph" style="border-width: 2px; border-style: solid"></div>
     <script>
-      buildCactusGraph();
+      parseCactusDump("/cactusDump2", function (cactusDump) {
+        buildCactusGraph(cactusDump.cactusTrees);
+        buildPinchGraph(cactusDump.pinchData);
+      });
     </script>
   </body>
 </html>
