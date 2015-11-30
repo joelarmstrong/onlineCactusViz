@@ -135,6 +135,12 @@ function pinchLayout(pinchData) {
         }
         curY += 2 * separation;
     }
+
+    pinch.threads = [];
+    for (var threadId in threadIdToSegments) {
+        pinch.threads.push(threadId);
+    }
+
     return pinch;
 }
 
@@ -316,6 +322,8 @@ function buildPinchGraph(pinchData) {
             + " " + d.target.x + " " + d.target.y;
     }
 
+    var pinchThreadColors = d3.scale.category10().domain(pinch.threads);
+
     var pinchAdjacency = zoomContainer.selectAll(".adjacency")
         .data(pinch.adjacencies)
         .enter()
@@ -323,7 +331,8 @@ function buildPinchGraph(pinchData) {
         .attr("d", pinchAdjacencyPath)
         .attr("class", "adjacency")
         .attr("multiplicity", function (d) { return d.multiplicity; })
-        .attr("adjIndex", function (d) { return d.adjNumber; });
+        .attr("adjIndex", function (d) { return d.adjNumber; })
+        .style("stroke", function (d) { return pinchThreadColors(d.threadId) });
 
     var pinchBlock = zoomContainer.selectAll(".block")
         .data(pinch.blocks)
