@@ -1,5 +1,5 @@
 /*global exports*/
-/*eslint-env node*/
+/*eslint-env node, browser*/
 // Functions to parse a newick string to a d3-compatible tree, and get
 // a newick string from a d3-compatible tree.
 (function(exports) {
@@ -46,4 +46,4 @@
         }
         return stack.pop().pop();
     };
-})(typeof exports === 'undefined' ? this.newick = {} : exports);
+})(typeof exports === 'undefined' ? window.newick = {} : exports);

@@ -3,6 +3,56 @@
 /*exported buildCactusGraph, buildPinchGraph, parseCactusDump*/
 /*eslint-env browser*/
 
+function mouseoverNode(d) {
+    var node = selectCorrespondingNetAndNodes(d);
+
+    node.append("text")
+        .attr("class", "label")
+        .attr("dx", d => d.children ? -8 : 8)
+        .attr("dy", 3)
+        .style("stroke-width", 5)
+        .style("stroke", "white")
+        .style("fill", "white")
+        .attr("text-anchor", d => d.children ? "end" : "start")
+        .text(d => d.name);
+
+    node.append("text")
+        .attr("class", "label")
+        .attr("dx", d=> d.children ? -8 : 8)
+        .attr("dy", 3)
+        .attr("text-anchor", d => d.children ? "end" : "start")
+        .text(d => d.name);
+
+
+    node.select("circle").classed("active", true);
+    node.select("rect").classed("active", true);
+}
+
+function mouseoutNode(d) {
+    var node = selectCorrespondingNetAndNodes(d);
+    node.select("circle").classed("active", false);
+    node.select("rect").classed("active", false);
+    node.selectAll("text").remove();
+}
+
+function mouseoverBlock(d) {
+    var block = d3.selectAll("g.block").filter(d2 => d.name === d2.name);
+    block.select(".block").classed("active", true);
+    block.append("text")
+        .attr("class", "label")
+        .attr("x", (d.source.x + d.target.x) / 2)
+        .attr("y", (d.source.y + d.target.y) / 2)
+        .attr("dx", -10)
+        .attr("dy", 20)
+        .text(d => `${d.name}\ndegree: ${d.segments.length}\nlength: ${d.length}`);
+}
+
+function mouseoutBlock(d) {
+    var block = d3.selectAll(".block").filter(d2 => d.name === d2.name);
+    block.select(".block").classed("active", false);
+    block.selectAll("text").remove();
+}
+
 function selectCorrespondingNetAndNodes(d) {
     var nodeName = d.name;
     return d3.selectAll("g.node").filter(function(d) {
@@ -12,7 +62,7 @@ function selectCorrespondingNetAndNodes(d) {
         if (nodeName in nodeToNet) {
             return d.name === nodeToNet[nodeName];
         } else {
-            return netToNodes[nodeName].some(function (x) { return x == d.name; });
+            return netToNodes[nodeName].some(x => x === d.name);
         }
     });
 }
@@ -25,7 +75,7 @@ function pinchLayout(pinchData) {
 
     // Populate a mapping from block name to block object.
     var nameToBlock = {};
-    pinch.blocks.forEach(function (b) { nameToBlock[b.name] = b; });
+    pinch.blocks.forEach(b => nameToBlock[b.name] = b);
 
     pinch.ends = d3.merge(pinch.blocks.map(function (block) {
         block.end0 = { block: block, orientation: 0 };
@@ -48,11 +98,10 @@ function pinchLayout(pinchData) {
                 adjacency.threadId = segment.threadId;
                 // FIXME: this is so ugly
                 var otherSegment = d3.min(nameToBlock[otherBlock].segments
-                                          .filter(function (s) { return s.threadId === segment.threadId; }),
-                                          function (s) {
-                                              return [s, d3.min([Math.abs(s.start - segment.end),
-                                                                 Math.abs(s.end - segment.start)])];
-                                          }, function (e) { return e[1]; })[0];
+                                          .filter(s => s.threadId === segment.threadId),
+                                          s => [s, d3.min([Math.abs(s.start - segment.end),
+                                                          Math.abs(s.end - segment.start)])],
+                                          function (e) { return e[1]; })[0];
                 if (segment.blockOrientation === "+") {
                     adjacency.source = segment.block.end1;
                 } else {
@@ -99,11 +148,11 @@ function pinchLayout(pinchData) {
     var drawnBlocks = d3.set();
     var curY = 0;
     for (var threadId in threadIdToSegments) {
-        var sortedSegments = threadIdToSegments[threadId].sort(function (s1, s2) { return s1.start - s2.start; });
+        var sortedSegments = threadIdToSegments[threadId].sort((s1, s2) => s1.start - s2.start);
         var blockStack = [{ length: 0, block: sortedSegments[0].block }];
         var blocksInStack = d3.set();
         blocksInStack.add(blockStack[0].name);
-        var stackInsertionIndex = d3.bisector(function(a, b) { return b.length - a.length; }).left;
+        var stackInsertionIndex = d3.bisector((a, b) => b.length - a.length).left;
         var curX = 0;
         while (blockStack.length > 0) {
             var entry = blockStack.pop();
@@ -137,7 +186,7 @@ function pinchLayout(pinchData) {
     }
 
     pinch.threads = [];
-    for (var threadId in threadIdToSegments) {
+    for (let threadId in threadIdToSegments) {
         pinch.threads.push(threadId);
     }
 
@@ -213,7 +262,7 @@ function parseCactusDump(dumpUrl, callback) {
             }
         }
 
-        cactusTrees = cactusTrees.map(function (t) { return parseCactusTree(t); });
+        cactusTrees = cactusTrees.map(t => parseCactusTree(t));
         callback({ cactusTrees: cactusTrees,
                    nodeToNet: nodeToNet,
                    netToNodes: netToNodes,
@@ -227,8 +276,8 @@ function buildPinchGraph(pinchData) {
         height = 350 - margin.top - margin.bottom;
 
     var pinchZoom = d3.behavior.zoom().on("zoom", function () {
-        zoomContainer.attr("transform", "translate(" + d3.event.translate + ")"
-                           + "scale(" + d3.event.scale + ")");
+        zoomContainer.attr("transform", `translate(${d3.event.translate})`
+                           + `scale(${d3.event.scale})`);
     });
     var pinch = pinchLayout(pinchData);
     var pinchG = d3.select("#pinchGraph").append("svg")
@@ -236,65 +285,9 @@ function buildPinchGraph(pinchData) {
         .attr("height", height + margin.top + margin.bottom)
         .call(pinchZoom)
         .append("g")
-        .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+        .attr("transform", `translate(${margin.left},${margin.top})`);
 
     var zoomContainer = pinchG.append("g");
-
-    function mouseoverNode(d) {
-        var node = selectCorrespondingNetAndNodes(d);
-
-        node.append("text")
-            .attr("class", "label")
-            .attr("dx", function(d) { return d.children ? -8 : 8; })
-            .attr("dy", 3)
-            .style("stroke-width", 5)
-            .style("stroke", "white")
-            .style("fill", "white")
-            .attr("text-anchor", function(d) { return d.children ? "end" : "start"; })
-            .text(function(d) { return d.name; });
-
-        node.append("text")
-            .attr("class", "label")
-            .attr("dx", function(d) { return d.children ? -8 : 8; })
-            .attr("dy", 3)
-            .attr("text-anchor", function(d) { return d.children ? "end" : "start"; })
-            .text(function(d) { return d.name; });
-
-
-        node.select("circle").classed("active", true);
-        node.select("rect").classed("active", true);
-    }
-
-    function mouseoutNode(d) {
-        var node = selectCorrespondingNetAndNodes(d);
-        node.select("circle").classed("active", false);
-        node.select("rect").classed("active", false);
-        node.selectAll("text").remove();
-    }
-
-    function mouseoverBlock(d) {
-        var block = d3.selectAll("g.block").filter(function(d2) {
-            return d.name === d2.name;
-        });
-        block.select(".block").classed("active", true);
-        block.append("text")
-            .attr("class", "label")
-            .attr("x", (d.source.x + d.target.x) / 2)
-            .attr("y", (d.source.y + d.target.y) / 2)
-            .attr("dx", -10)
-            .attr("dy", 20)
-            .text(function (d) {
-                return d.name + "\ndegree: " + d.segments.length + "\nlength: " + d.length;
-            });
-    }
-
-    function mouseoutBlock(d) {
-        var block = d3.selectAll(".block").filter(function(d2) {
-            return d.name === d2.name;
-        });
-        block.select(".block").classed("active", false);
-        block.selectAll("text").remove();
-    }
 
     function pinchAdjacencyPath(d) {
         /* Draw the path for a pinch adjacency so that:
@@ -304,8 +297,8 @@ function buildPinchGraph(pinchData) {
 
         var apexX = (d.source.x + d.target.x) / 2;
         var apexY = (d.source.y + d.target.y) / 2;
-        if (isNaN(apexY)) {
-            throw 'nan';
+        if (Number.isNaN(apexY)) {
+            throw 'adjacency position could not be computed';
         }
         if (d.multiplicity % 2 === 0 && d.adjNumber === 0) {
             apexY += 30 * Math.pow(-1, d.adjNumber);
@@ -330,9 +323,9 @@ function buildPinchGraph(pinchData) {
         .append("path")
         .attr("d", pinchAdjacencyPath)
         .attr("class", "adjacency")
-        .attr("multiplicity", function (d) { return d.multiplicity; })
-        .attr("adjIndex", function (d) { return d.adjNumber; })
-        .style("stroke", function (d) { return pinchThreadColors(d.threadId) });
+        .attr("multiplicity", d => d.multiplicity)
+        .attr("adjIndex", d => d.adjNumber)
+        .style("stroke", d => pinchThreadColors(d.threadId));
 
     var pinchBlock = zoomContainer.selectAll(".block")
         .data(pinch.blocks)
@@ -341,11 +334,11 @@ function buildPinchGraph(pinchData) {
         .attr("class", "block")
         .append("line")
         .attr("class", "block")
-        .attr("x1", function (d) { return d.end0.x; })
-        .attr("y1", function (d) { return d.end0.y; })
-        .attr("x2", function (d) { return d.end1.x; })
-        .attr("y2", function (d) { return d.end1.y; })
-        .style("stroke-width", function (d) { return d.segments.length; })
+        .attr("x1", d => d.end0.x)
+        .attr("y1", d => d.end0.y)
+        .attr("x2", d => d.end1.x)
+        .attr("y2", d => d.end1.y)
+        .style("stroke-width", d => d.segments.length)
         .on("mouseover", mouseoverBlock)
         .on("mouseout", mouseoutBlock);
 
@@ -359,8 +352,8 @@ function buildPinchGraph(pinchData) {
 
     pinchNode.append("circle")
         .attr("r", 4.5)
-        .attr("cx", function (d) { return d.x; })
-        .attr("cy", function (d) { return d.y; });
+        .attr("cx", d => d.x)
+        .attr("cy", d => d.y);
 }
 
 function buildCactusGraph(trees) {
@@ -382,81 +375,23 @@ function buildCactusGraph(trees) {
         .attr("height", height + margin.top + margin.bottom)
         .call(d3.behavior.zoom().x(y).y(x).on("zoom", function () {
             svg.selectAll("g.node")
-                .attr("transform", function (d) {
-                    return "translate(" + y(d.y) + "," + x(d.x) + ")";
-                });
+                .attr("transform", d => `translate(${y(d.y)}, ${x(d.x)})`);
             svg.selectAll("path.block")
                 .attr("d", diagonal);
         }))
         .append("g")
         .append("g")
-        .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+        .attr("transform", `translate(${margin.left}, ${margin.top})`);
 
     var tree = d3.layout.tree()
         .size([height, width]);
 
     var diagonal = d3.svg.diagonal()
-        .projection(function(d) { return [y(d.y), x(d.x)]; });
+        .projection(d => [y(d.y), x(d.x)]);
 
     trees.forEach(function (data) {
         var nodes = tree.nodes(data.tree),
             links = data.links;
-
-        function mouseoverNode(d) {
-            var node = selectCorrespondingNetAndNodes(d);
-
-            node.append("text")
-                .attr("class", "label")
-                .attr("dx", function(d) { return d.children ? -8 : 8; })
-                .attr("dy", 3)
-                .style("stroke-width", 5)
-                .style("stroke", "white")
-                .style("fill", "white")
-                .attr("text-anchor", function(d) { return d.children ? "end" : "start"; })
-                .text(function(d) { return d.name; });
-
-            node.append("text")
-                .attr("class", "label")
-                .attr("dx", function(d) { return d.children ? -8 : 8; })
-                .attr("dy", 3)
-                .attr("text-anchor", function(d) { return d.children ? "end" : "start"; })
-                .text(function(d) { return d.name; });
-
-
-            node.select("circle").classed("active", true);
-            node.select("rect").classed("active", true);
-        }
-
-        function mouseoutNode(d) {
-            var node = selectCorrespondingNetAndNodes(d);
-            node.select("circle").classed("active", false);
-            node.select("rect").classed("active", false);
-            node.selectAll("text").remove();
-        }
-
-        function mouseoverBlock(d) {
-            var block = d3.selectAll("g.block").filter(function(d2) {
-                return d.name === d2.name;
-            });
-            block.select(".block").classed("active", true);
-            block.append("text")
-                .attr("class", "label")
-                .attr("x", (d.source.x + d.target.x) / 2)
-                .attr("y", (d.source.y + d.target.y) / 2)
-                .attr("dx", -10)
-                .attr("dy", 20)
-                .text(function (d) {
-                    return d.name + "\ndegree: " + d.segments.length + "\nlength: " + d.length;
-                });
-        }
-
-        function mouseoutBlock(d) {
-            var block = d3.selectAll(".block").filter(function(d2) {
-                return d.name === d2.name;
-            });
-            block.select(".block").classed("active", false);
-            block.selectAll("text").remove();
-        }
 
         svg.selectAll("path.block")
             .data(links)
@@ -473,7 +408,7 @@ function buildCactusGraph(trees) {
             .data(nodes)
             .enter().append("g")
             .attr("class", "node")
-            .attr("transform", function(d) { return "translate(" + y(d.y) + "," + x(d.x) + ")"; })
+            .attr("transform", d => `translate(${y(d.y)}, ${x(d.x)})`)
             .on("mouseover", mouseoverNode)
             .on("mouseout", mouseoutNode)
             .append(function (d) {

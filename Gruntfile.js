@@ -2,6 +2,20 @@
 module.exports = function(grunt) {
     grunt.initConfig({
         pkg: grunt.file.readJSON('package.json'),
+        babel: {
+            options: {
+                sourceMap: true,
+                presets: ['es2015']
+            },
+            dist: {
+                files: [{
+                    expand: true,
+                    src: ['js/*.js'],
+                    dest: 'compiled',
+                    ext: '.js'
+                }]
+            }
+        },
         eslint: {
             options: {
                 configFile: "eslint.json"
@@ -24,7 +38,7 @@ module.exports = function(grunt) {
         watch: {
             js: {
                 files: ['Gruntfile.js', 'js/*.js', 'test/*.js'],
-                tasks: ['eslint', 'mochaTest'],
+                tasks: ['babel', 'eslint', 'mochaTest'],
                 options: {
                     livereload: true
                 }
@@ -40,6 +54,7 @@ module.exports = function(grunt) {
 
     grunt.loadNpmTasks('grunt-mocha-test');
     grunt.loadNpmTasks('grunt-eslint');
+    grunt.loadNpmTasks('grunt-babel');
     grunt.loadNpmTasks('grunt-contrib-connect');
     grunt.loadNpmTasks('grunt-contrib-watch');
 
