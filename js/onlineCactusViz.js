@@ -53,6 +53,14 @@ function mouseoutBlock(d) {
     block.selectAll("text").remove();
 }
 
+function mouseoverAdjacency() {
+    d3.select(this).classed("active", true);
+}
+
+function mouseoutAdjacency() {
+    d3.select(this).classed("active", false);
+}
+
 function selectCorrespondingNetAndNodes(d) {
     var nodeName = d.name;
     return d3.selectAll("g.node").filter(function(d) {
@@ -100,7 +108,7 @@ function pinchLayout(pinchData) {
                 var otherSegment = d3.min(nameToBlock[otherBlock].segments
                                           .filter(s => s.threadId === segment.threadId),
                                           s => [s, d3.min([Math.abs(s.start - segment.end),
-                                                          Math.abs(s.end - segment.start)])],
+                                                           Math.abs(s.end - segment.start)])],
                                           function (e) { return e[1]; })[0];
                 if (segment.blockOrientation === "+") {
                     adjacency.source = segment.block.end1;
@@ -193,240 +201,274 @@ function pinchLayout(pinchData) {
     return pinch;
 }
 
-function parseCactusDump(dumpUrl, callback) {
-    d3.text(dumpUrl, function (text) {
-        function parseCactusTree(tree) {
-            var links = [];
-            function recurse(subtree) {
-                var nodeRegex = /(NET|CHAIN)(.*)/;
-                var results = nodeRegex.exec(subtree.name);
-                var type = results[1];
-                var name = results[2];
-                subtree.name = name;
-                subtree.type = type;
-                if ('children' in subtree) {
-                    subtree.children = subtree.children.map(function (child) {
-                        var blockRegex = /BLOCK(.*)/;
-                        var results = blockRegex.exec(child.name);
-                        var name = results[1];
-                        var grandChild = recurse(child.children[0]);
-                        links.push({ name: name, source: subtree, target: grandChild});
-                        return grandChild;
-                    });
-                }
-                return subtree;
-            }
-            tree = recurse(tree);
-            var ret = { tree: tree, links: links };
-            return ret;
-        }
-
-        var cactusTrees = [];
-        var lines = text.split("\n");
-        var pinchGraph = { blocks: [] };
-        var nodeToNet = {};
-        var netToNodes = {};
-        function sextuplets(array) {
-            var ret = [];
-            for (var i = 0; i < array.length; i += 6) {
-                ret.push([array[i], array[i + 1], array[i + 2], array[i + 3],
-                          array[i + 4], array[i + 5]]);
-            }
-            return ret;
-        }
-        for (var i = 0; i < lines.length; i++) {
-            var line = lines[i];
-            var fields = line.split("\t");
-            if (fields[0] == "C") {
-                cactusTrees.push(newick.parseNewick(fields[1]));
-            }
-            if (fields[0] == 'G') {
-                pinchGraph.blocks.push({ name: fields[1],
-                                         segments: sextuplets(fields.slice(2)).map(function (segment) {
-                                             return { threadId: segment[0],
-                                                      start: +segment[1],
-                                                      end: +segment[2],
-                                                      rightAdjacentBlock: segment[3],
-                                                      leftAdjacentBlock: segment[4],
-                                                      blockOrientation: segment[5] };
-                                         }) });
-            }
-            if (fields[0] == 'M') {
-                netToNodes[fields[1]] = fields.slice(2);
-                fields.slice(2).forEach(function (node) {
-                    nodeToNet[node] = fields[1];
+function parseCactusDump(lines, callback) {
+    function parseCactusTree(tree) {
+        var links = [];
+        function recurse(subtree) {
+            var nodeRegex = /(NET|CHAIN)(.*)/;
+            var results = nodeRegex.exec(subtree.name);
+            var type = results[1];
+            var name = results[2];
+            subtree.name = name;
+            subtree.type = type;
+            if ('children' in subtree) {
+                subtree.children = subtree.children.map(function (child) {
+                    var blockRegex = /BLOCK(.*)/;
+                    var results = blockRegex.exec(child.name);
+                    var name = results[1];
+                    var grandChild = recurse(child.children[0]);
+                    links.push({ name: name, source: subtree, target: grandChild});
+                    return grandChild;
                 });
             }
-            if (fields[0] == "STEP") {
-                break;
-            }
+            return subtree;
         }
+        tree = recurse(tree);
+        var ret = { tree: tree, links: links };
+        return ret;
+    }
 
-        cactusTrees = cactusTrees.map(t => parseCactusTree(t));
-        callback({ cactusTrees: cactusTrees,
-                   nodeToNet: nodeToNet,
-                   netToNodes: netToNodes,
-                   pinchData: pinchGraph });
-    });
+    var cactusTrees = [];
+    var pinchGraph = { blocks: [] };
+    var nodeToNet = {};
+    var netToNodes = {};
+    function sextuplets(array) {
+        var ret = [];
+        for (var i = 0; i < array.length; i += 6) {
+            ret.push([array[i], array[i + 1], array[i + 2], array[i + 3],
+                      array[i + 4], array[i + 5]]);
+        }
+        return ret;
+    }
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        var fields = line.split("\t");
+        if (fields[0] === "C") {
+            cactusTrees.push(newick.parseNewick(fields[1]));
+        }
+        if (fields[0] === 'G') {
+            pinchGraph.blocks.push({ name: fields[1],
+                                     segments: sextuplets(fields.slice(2)).map(function (segment) {
+                                         return { threadId: segment[0],
+                                                  start: +segment[1],
+                                                  end: +segment[2],
+                                                  rightAdjacentBlock: segment[3],
+                                                  leftAdjacentBlock: segment[4],
+                                                  blockOrientation: segment[5] };
+                                     }) });
+        }
+        if (fields[0] === 'M') {
+            netToNodes[fields[1]] = fields.slice(2);
+            fields.slice(2).forEach(function (node) {
+                nodeToNet[node] = fields[1];
+            });
+        }
+    }
+
+    cactusTrees = cactusTrees.map(t => parseCactusTree(t));
+    callback({ cactusTrees: cactusTrees,
+               nodeToNet: nodeToNet,
+               netToNodes: netToNodes,
+               pinchData: pinchGraph });
 }
 
-function buildPinchGraph(pinchData) {
-    var margin = {top: 20, right: 80, bottom: 20, left: 80},
-        width = 1550 - margin.left - margin.right,
+function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
+    let width = 1550 - margin.left - margin.right,
         height = 350 - margin.top - margin.bottom;
 
     var pinchZoom = d3.behavior.zoom().on("zoom", function () {
         zoomContainer.attr("transform", `translate(${d3.event.translate})`
                            + `scale(${d3.event.scale})`);
     });
-    var pinch = pinchLayout(pinchData);
     var pinchG = d3.select("#pinchGraph").append("svg")
-        .attr("width", width + margin.left + margin.right)
-        .attr("height", height + margin.top + margin.bottom)
-        .call(pinchZoom)
-        .append("g")
-        .attr("transform", `translate(${margin.left},${margin.top})`);
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .call(pinchZoom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
 
     var zoomContainer = pinchG.append("g");
+    return function updatePinchGraph(pinchData) {
+        var pinch = pinchLayout(pinchData);
+        function pinchAdjacencyPath(d) {
+            /* Draw the path for a pinch adjacency so that:
+             - multiple adjacencies are clearly separated
+             - long adjacencies are separated from the rest, even if
+             there is no change in y */
 
-    function pinchAdjacencyPath(d) {
-        /* Draw the path for a pinch adjacency so that:
-           - multiple adjacencies are clearly separated
-           - long adjacencies are separated from the rest, even if
-           there is no change in y */
-
-        var apexX = (d.source.x + d.target.x) / 2;
-        var apexY = (d.source.y + d.target.y) / 2;
-        if (Number.isNaN(apexY)) {
-            throw 'adjacency position could not be computed';
+            var apexX = (d.source.x + d.target.x) / 2;
+            var apexY = (d.source.y + d.target.y) / 2;
+            if (Number.isNaN(apexY)) {
+                throw 'adjacency position could not be computed';
+            }
+            if (d.multiplicity % 2 === 0 && d.adjNumber === 0) {
+                apexY += 30 * Math.pow(-1, d.adjNumber);
+            } else if (d.multiplicity % 2 === 0) {
+                apexY += d.adjNumber * 30 * Math.pow(-1, d.adjNumber);
+            } else {
+                apexY += Math.ceil(d.adjNumber / 2) * 30 * Math.pow(-1, d.adjNumber);
+            }
+            if (Math.abs(d.target.x - d.source.x) > 20) {
+                apexY += d.target.x - d.source.x;
+            }
+            return "M " + d.source.x + " " + d.source.y
+                + " Q " + apexX + " " + apexY
+                + " " + d.target.x + " " + d.target.y;
         }
-        if (d.multiplicity % 2 === 0 && d.adjNumber === 0) {
-            apexY += 30 * Math.pow(-1, d.adjNumber);
-        } else if (d.multiplicity % 2 === 0) {
-            apexY += d.adjNumber * 30 * Math.pow(-1, d.adjNumber);
-        } else {
-            apexY += Math.ceil(d.adjNumber / 2) * 30 * Math.pow(-1, d.adjNumber);
-        }
-        if (Math.abs(d.target.x - d.source.x) > 20) {
-            apexY += d.target.x - d.source.x;
-        }
-        return "M " + d.source.x + " " + d.source.y
-            + " Q " + apexX + " " + apexY
-            + " " + d.target.x + " " + d.target.y;
-    }
 
-    var pinchThreadColors = d3.scale.category10().domain(pinch.threads);
+        var pinchThreadColors = d3.scale.category10().domain(pinch.threads);
 
-    var pinchAdjacency = zoomContainer.selectAll(".adjacency")
-        .data(pinch.adjacencies)
-        .enter()
-        .append("path")
-        .attr("d", pinchAdjacencyPath)
-        .attr("class", "adjacency")
-        .attr("multiplicity", d => d.multiplicity)
-        .attr("adjIndex", d => d.adjNumber)
-        .style("stroke", d => pinchThreadColors(d.threadId));
+        var pinchAdjacency = zoomContainer.selectAll(".adjacency")
+                .data(pinch.adjacencies);
 
-    var pinchBlock = zoomContainer.selectAll(".block")
-        .data(pinch.blocks)
-        .enter()
-        .append("g")
-        .attr("class", "block")
-        .append("line")
-        .attr("class", "block")
-        .attr("x1", d => d.end0.x)
-        .attr("y1", d => d.end0.y)
-        .attr("x2", d => d.end1.x)
-        .attr("y2", d => d.end1.y)
-        .style("stroke-width", d => d.segments.length)
-        .on("mouseover", mouseoverBlock)
-        .on("mouseout", mouseoutBlock);
+        pinchAdjacency.enter()
+            .append("path")
+            .attr("class", "adjacency")
+            .on("mouseover", mouseoverAdjacency)
+            .on("mouseout", mouseoutAdjacency);
 
-    var pinchNode = zoomContainer.selectAll(".node")
-        .data(pinch.ends)
-        .enter()
-        .append("g")
-        .attr("class", "node")
-        .on("mouseover", mouseoverNode)
-        .on("mouseout", mouseoutNode);
+        pinchAdjacency
+            .attr("d", pinchAdjacencyPath)
+            .attr("multiplicity", d => d.multiplicity)
+            .attr("adjIndex", d => d.adjNumber)
+            .style("stroke", d => pinchThreadColors(d.threadId));
 
-    pinchNode.append("circle")
-        .attr("r", 4.5)
-        .attr("cx", d => d.x)
-        .attr("cy", d => d.y);
-}
+        pinchAdjacency.exit().remove();
 
-function buildCactusGraph(trees) {
-    // Margin boilerplate taken from gist mbostock/3019563
-    var margin = {top: 20, right: 80, bottom: 20, left: 80},
-        width = 1550 - margin.left - margin.right,
-        height = 350 - margin.top - margin.bottom;
+        console.log(`pinchAdjacency entering: ${pinchAdjacency.enter().size()} updating: ${pinchAdjacency.size()} leaving: ${pinchAdjacency.exit().size()}`);
 
-    var x = d3.scale.linear()
-        .domain([0, width])
-        .range([0, width]);
+        var pinchBlock = zoomContainer.selectAll("g.block")
+                .data(pinch.blocks, d => d.name);
 
-    var y = d3.scale.linear()
-        .domain([0, height])
-        .range([0, height]);
+        console.log(`pinchBlock entering: ${pinchBlock.enter().size()} updating: ${pinchBlock.size()} leaving: ${pinchBlock.exit().size()}`);
 
-    var svg = d3.select("#cactusGraph").append("svg")
-        .attr("width", width + margin.left + margin.right)
-        .attr("height", height + margin.top + margin.bottom)
-        .call(d3.behavior.zoom().x(y).y(x).on("zoom", function () {
-            svg.selectAll("g.node")
-                .attr("transform", d => `translate(${y(d.y)}, ${x(d.x)})`);
-            svg.selectAll("path.block")
-                .attr("d", diagonal);
-        }))
-        .append("g")
-        .append("g")
-        .attr("transform", `translate(${margin.left}, ${margin.top})`);
-
-    var tree = d3.layout.tree()
-        .size([height, width]);
-
-    var diagonal = d3.svg.diagonal()
-        .projection(d => [y(d.y), x(d.x)]);
-
-    trees.forEach(function (data) {
-        var nodes = tree.nodes(data.tree),
-            links = data.links;
-
-        svg.selectAll("path.block")
-            .data(links)
-            .enter()
+        pinchBlock.enter()
             .append("g")
             .attr("class", "block")
-            .append("path")
+            .append("line")
             .attr("class", "block")
-            .attr("d", diagonal)
             .on("mouseover", mouseoverBlock)
             .on("mouseout", mouseoutBlock);
 
-        svg.selectAll("g.node")
-            .data(nodes)
-            .enter().append("g")
+        pinchBlock.select("line")
+            .transition().duration(1000)
+            .attr("x1", d => d.end0.x)
+            .attr("y1", d => d.end0.y)
+            .attr("x2", d => d.end1.x)
+            .attr("y2", d => d.end1.y)
+            .style("stroke-width", d => d.segments.length);
+
+        pinchBlock.exit().remove();
+
+        let pinchNode = zoomContainer.selectAll(".node")
+                .data(pinch.ends);
+
+        console.log(`pinchNode entering: ${pinchNode.enter().size()} updating: ${pinchNode.size()} leaving: ${pinchNode.exit().size()}`);
+
+        // Add the SVG elements for the new ends.
+        pinchNode.enter()
+            .append("g")
             .attr("class", "node")
-            .attr("transform", d => `translate(${y(d.y)}, ${x(d.x)})`)
             .on("mouseover", mouseoverNode)
             .on("mouseout", mouseoutNode)
-            .append(function (d) {
-                var elem;
-                if (d.type == "NET") {
-                    // Nets are represented by a circle.
-                    elem = document.createElementNS(d3.ns.prefix.svg, "circle");
-                    d3.select(elem).attr("r", 4.5);
-                } else if (d.type == "CHAIN") {
-                    // Chains are represented by a square. Since
-                    // rects have their top-left corner at their
-                    // x,y coordinates, we need to shift it a bit
-                    // to center it properly.
-                    elem = document.createElementNS(d3.ns.prefix.svg, "rect");
-                    d3.select(elem).attr("width", 9).attr("height", 9)
-                        .attr("transform", "translate(-4.5, -4.5)");
-                }
-                return elem;
-            });
-    });
+            .append("circle");
+
+        // Update existing and new ends.
+        pinchNode.select("circle")
+            .attr("r", 4.5)
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y);
+
+        // Remove old ends that are no longer present.
+        pinchNode.exit().remove();
+    };
+}
+
+function buildCactusGraph(margin={top: 20, right: 80, bottom: 20, left: 80}) {
+    // Margin boilerplate taken from gist mbostock/3019563
+    let width = 1550 - margin.left - margin.right,
+        height = 350 - margin.top - margin.bottom;
+
+    var x = d3.scale.linear()
+            .domain([0, width])
+            .range([0, width]);
+
+    var y = d3.scale.linear()
+            .domain([0, height])
+            .range([0, height]);
+
+    var svg = d3.select("#cactusGraph").append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .call(d3.behavior.zoom().x(y).y(x).on("zoom", function () {
+                svg.selectAll("g.node")
+                    .attr("transform", d => `translate(${y(d.y)}, ${x(d.x)})`);
+                svg.selectAll("path.block")
+                    .attr("d", diagonal);
+            }))
+            .append("g")
+            .append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+    var tree = d3.layout.tree()
+            .size([height, width]);
+
+    var diagonal = d3.svg.diagonal()
+            .projection(d => [y(d.y), x(d.x)]);
+
+    return function updateCactusGraph(trees) {
+        trees.forEach(function (data) {
+            var nodes = tree.nodes(data.tree),
+                links = data.links;
+
+            let cactusBlocks = svg.selectAll("g.block")
+                    .data(links, d => d.name);
+
+            console.log(`cactusBlocks entering: ${cactusBlocks.enter().size()} updating: ${cactusBlocks.size()} leaving: ${cactusBlocks.exit().size()}`);
+
+            cactusBlocks.enter()
+                .append("g")
+                .attr("class", "block")
+                .append("path")
+                .attr("class", "block")
+                .on("mouseover", mouseoverBlock)
+                .on("mouseout", mouseoutBlock);
+
+            cactusBlocks.select("path").attr("d", diagonal);
+
+            cactusBlocks.exit().remove();
+
+            let cactusNodes = svg.selectAll("g.node")
+                    .data(nodes, d => d.name);
+
+            console.log(`cactusNodes entering: ${cactusNodes.enter().size()} updating: ${cactusNodes.size()} leaving: ${cactusNodes.exit().size()}`);
+
+            cactusNodes.enter()
+                .append("g")
+                .attr("class", "node")
+                .on("mouseover", mouseoverNode)
+                .on("mouseout", mouseoutNode)
+                .append(function (d) {
+                    var elem;
+                    if (d.type == "NET") {
+                        // Nets are represented by a circle.
+                        elem = document.createElementNS(d3.ns.prefix.svg, "circle");
+                        d3.select(elem).attr("r", 4.5);
+                    } else if (d.type == "CHAIN") {
+                        // Chains are represented by a square. Since
+                        // rects have their top-left corner at their
+                        // x,y coordinates, we need to shift it a bit
+                        // to center it properly.
+                        elem = document.createElementNS(d3.ns.prefix.svg, "rect");
+                        d3.select(elem).attr("width", 9).attr("height", 9)
+                            .attr("transform", "translate(-4.5, -4.5)");
+                    }
+                    return elem;
+                });
+
+            cactusNodes.attr("transform", d => `translate(${y(d.y)}, ${x(d.x)})`);
+
+            cactusNodes.exit().remove();
+        });
+    };
 }

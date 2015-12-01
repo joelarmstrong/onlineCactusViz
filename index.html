@@ -33,6 +33,11 @@ text.label {
   stroke-width: 2px;
 }
 
+.adjacency.active {
+  stroke-dasharray: 4,4;
+  stroke-width: 4px;
+}
+
 .block {
   fill: none;
   stroke: #000;
@@ -53,10 +58,32 @@ text.label {
     <script src="compiled/js/onlineCactusViz.js"></script>
     <div id="cactusGraph" style="border-width: 2px; border-style: solid"></div>
     <div id="pinchGraph" style="border-width: 2px; border-style: solid"></div>
+    <input name="advance" type="button" value="Advance"/>
+    <p id="curStepInfo"></p>
     <script>
-      parseCactusDump("/cactusDump2", function (cactusDump) {
-        buildCactusGraph(cactusDump.cactusTrees);
-        buildPinchGraph(cactusDump.pinchData);
+      d3.text("/cactusDump", function (text) {
+          var lines = text.split("\n");
+          var liness = lines.reduce(function(a, l) {
+                                        var fields = l.split("\t");
+                                        if (fields[0] === 'BATCH' || fields[0] === 'STEP') {
+                                            a.push([l]);
+                                        } else {
+                                            a[a.length - 1].push(l);
+                                        }
+                                        return a;
+                                    }, []);
+          var updateCactusGraph = buildCactusGraph();
+          var updatePinchGraph = buildPinchGraph();
+          function advance() {
+              var lines = liness.shift();
+              d3.select('#curStepInfo').text(lines[0]);
+              parseCactusDump(liness.shift(), function (cactusDump) {
+                  updateCactusGraph(cactusDump.cactusTrees);
+                  updatePinchGraph(cactusDump.pinchData);
+              });
+          }
+          d3.select("input").on("click", advance);
+          advance();
       });
     </script>
   </body>
