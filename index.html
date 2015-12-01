@@ -77,7 +77,7 @@ text.label {
           function advance() {
               var lines = liness.shift();
               d3.select('#curStepInfo').text(lines[0]);
-              parseCactusDump(liness.shift(), function (cactusDump) {
+              parseCactusDump(lines, function (cactusDump) {
                   updateCactusGraph(cactusDump.cactusTrees);
                   updatePinchGraph(cactusDump.pinchData);
               });
