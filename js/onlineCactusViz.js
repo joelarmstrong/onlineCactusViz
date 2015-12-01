@@ -18,11 +18,10 @@ function mouseoverNode(d) {
 
     node.append("text")
         .attr("class", "label")
-        .attr("dx", d=> d.children ? -8 : 8)
+        .attr("dx", d => d.children ? -8 : 8)
         .attr("dy", 3)
         .attr("text-anchor", d => d.children ? "end" : "start")
         .text(d => d.name);
-
 
     node.select("circle").classed("active", true);
     node.select("rect").classed("active", true);
@@ -384,6 +383,18 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
     };
 }
 
+function layoutForest() {
+    let tree = d3.layout.tree();
+    tree.realNodes = tree.nodes;
+    tree.nodes = function (nodes) {
+        let fakeRoot = {children: nodes};
+        let ret = tree.realNodes(fakeRoot);
+        ret = ret.filter(node => node !== fakeRoot);
+        return ret;
+    };
+    return tree;
+}
+
 function buildCactusGraph(margin={top: 20, right: 80, bottom: 20, left: 80}) {
     // Margin boilerplate taken from gist mbostock/3019563
     let width = 1550 - margin.left - margin.right,
@@ -410,65 +421,74 @@ function buildCactusGraph(margin={top: 20, right: 80, bottom: 20, left: 80}) {
             .append("g")
             .attr("transform", `translate(${margin.left}, ${margin.top})`);
 
-    var tree = d3.layout.tree()
-            .size([height, width]);
+    let forest = layoutForest().size([height, width]);
 
     var diagonal = d3.svg.diagonal()
             .projection(d => [y(d.y), x(d.x)]);
 
-    return function updateCactusGraph(trees) {
-        trees.forEach(function (data) {
-            var nodes = tree.nodes(data.tree),
-                links = data.links;
+    return function updateCactusGraph(data) {
+        var nodes = forest.nodes(data.map(d => d.tree)),
+            links = data.reduce((a, e) => a.concat(e.links), []);
 
-            let cactusBlocks = svg.selectAll("g.block")
-                    .data(links, d => d.name);
+        let cactusBlocks = svg.selectAll("g.block")
+                .data(links, d => d.name);
 
-            console.log(`cactusBlocks entering: ${cactusBlocks.enter().size()} updating: ${cactusBlocks.size()} leaving: ${cactusBlocks.exit().size()}`);
+        console.log(`cactusBlocks entering: ${cactusBlocks.enter().size()} updating: ${cactusBlocks.size()} leaving: ${cactusBlocks.exit().size()}`);
 
-            cactusBlocks.enter()
-                .append("g")
-                .attr("class", "block")
-                .append("path")
-                .attr("class", "block")
-                .on("mouseover", mouseoverBlock)
-                .on("mouseout", mouseoutBlock);
+        console.log(cactusBlocks.size());
+        console.log(cactusBlocks.selectAll("path").size());
 
-            cactusBlocks.select("path").attr("d", diagonal);
+        cactusBlocks.enter()
+            .append("g")
+            .attr("class", "block")
+            .append("path")
+            .attr("class", "block")
+            .on("mouseover", mouseoverBlock)
+            .on("mouseout", mouseoutBlock)
+            .style("opacity", 0)
+            .attr("d", diagonal)
+            .transition()
+            .duration(1000)
+            .style("opacity", 1);
 
-            cactusBlocks.exit().remove();
+        cactusBlocks.select("path").attr("d", diagonal);
 
-            let cactusNodes = svg.selectAll("g.node")
-                    .data(nodes, d => d.name);
+        cactusBlocks.exit().remove();
 
-            console.log(`cactusNodes entering: ${cactusNodes.enter().size()} updating: ${cactusNodes.size()} leaving: ${cactusNodes.exit().size()}`);
+        let cactusNodes = svg.selectAll("g.node")
+                .data(nodes, d => d.name);
 
-            cactusNodes.enter()
-                .append("g")
-                .attr("class", "node")
-                .on("mouseover", mouseoverNode)
-                .on("mouseout", mouseoutNode)
-                .append(function (d) {
-                    var elem;
-                    if (d.type == "NET") {
-                        // Nets are represented by a circle.
-                        elem = document.createElementNS(d3.ns.prefix.svg, "circle");
-                        d3.select(elem).attr("r", 4.5);
-                    } else if (d.type == "CHAIN") {
-                        // Chains are represented by a square. Since
-                        // rects have their top-left corner at their
-                        // x,y coordinates, we need to shift it a bit
-                        // to center it properly.
-                        elem = document.createElementNS(d3.ns.prefix.svg, "rect");
-                        d3.select(elem).attr("width", 9).attr("height", 9)
-                            .attr("transform", "translate(-4.5, -4.5)");
-                    }
-                    return elem;
-                });
+        console.log(`cactusNodes entering: ${cactusNodes.enter().size()} updating: ${cactusNodes.size()} leaving: ${cactusNodes.exit().size()}`);
 
-            cactusNodes.attr("transform", d => `translate(${y(d.y)}, ${x(d.x)})`);
+        cactusNodes.transition().duration(1000).attr("transform", d => `translate(${y(d.y)}, ${x(d.x)})`);
 
-            cactusNodes.exit().remove();
-        });
+        cactusNodes.enter()
+            .append("g")
+            .attr("class", "node")
+            .attr("transform", d => `translate(${y(d.y)}, ${x(d.x)})`)
+            .on("mouseover", mouseoverNode)
+            .on("mouseout", mouseoutNode)
+            .append(function (d) {
+                var elem;
+                if (d.type === "NET") {
+                    // Nets are represented by a circle.
+                    elem = document.createElementNS(d3.ns.prefix.svg, "circle");
+                    d3.select(elem).attr("r", 4.5);
+                } else if (d.type === "CHAIN") {
+                    // Chains are represented by a square. Since
+                    // rects have their top-left corner at their
+                    // x,y coordinates, we need to shift it a bit
+                    // to center it properly.
+                    elem = document.createElementNS(d3.ns.prefix.svg, "rect");
+                    d3.select(elem).attr("width", 9).attr("height", 9)
+                        .attr("transform", "translate(-4.5, -4.5)");
+                }
+                d3.select(elem).style("opacity", 0);
+                d3.select(elem).transition().duration(1000).style("opacity", 1);
+                return elem;
+            });
+
+        cactusNodes.exit().remove();
     };
 }
+
