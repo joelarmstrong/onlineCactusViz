@@ -58,7 +58,9 @@ text.label {
     <script src="compiled/js/onlineCactusViz.js"></script>
     <div id="cactusGraph" style="border-width: 2px; border-style: solid"></div>
     <div id="pinchGraph" style="border-width: 2px; border-style: solid"></div>
-    <input name="advance" type="button" value="Advance"/>
+    <input id="previous-step" type="button" value="Previous step"/>
+    <input id="next-step" type="button" value="Next step"/>
+    <input id="arrowheads" type="checkbox">Pinch adjacency arrowheads</input>
     <p id="curStepInfo"></p>
     <script>
       d3.text("/cactusDump", function (text) {
@@ -74,16 +76,33 @@ text.label {
                                     }, []);
           var updateCactusGraph = buildCactusGraph();
           var updatePinchGraph = buildPinchGraph();
-          function advance() {
-              var lines = liness.shift();
+          var curStepIndex = 0;
+          var pinchArrowheads = false;
+          function nextStep() {
+              curStepIndex++;
+              update();
+          }
+          function prevStep() {
+              curStepIndex--;
+              update();
+          }
+          function update() {
+              var lines = liness[curStepIndex];
               d3.select('#curStepInfo').text(lines[0]);
               parseCactusDump(lines, function (cactusDump) {
                   updateCactusGraph(cactusDump.cactusTrees);
-                  updatePinchGraph(cactusDump.pinchData);
+                  updatePinchGraph(cactusDump.pinchData, pinchArrowheads);
               });
           }
-          d3.select("input").on("click", advance);
-          advance();
+          function changeArrowheads() {
+              pinchArrowheads = this.checked;
+              console.log(pinchArrowheads);
+              update();
+          }
+          d3.select('#next-step').on('click', nextStep);
+          d3.select('#previous-step').on('click', prevStep);
+          d3.select('#arrowheads').on('change', changeArrowheads);
+          update();
       });
     </script>
   </body>

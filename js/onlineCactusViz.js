@@ -286,8 +286,19 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
             .append("g")
             .attr("transform", `translate(${margin.left},${margin.top})`);
 
+    pinchG.append('marker')
+        .attr('id', 'arrowhead')
+        .attr('orient', 'auto')
+        .attr('markerWidth', 4)
+        .attr('markerHeight', 4)
+        .attr('refX', 5)
+        .attr('refY', 2)
+        .append('path')
+        .attr('d', 'M0,0 L0,4 L4,2 L0,0')
+        .style('opacity', 0.7);
+
     var zoomContainer = pinchG.append("g");
-    return function updatePinchGraph(pinchData) {
+    return function updatePinchGraph(pinchData, arrowheads=false) {
         var pinch = pinchLayout(pinchData);
         function pinchAdjacencyPath(d) {
             /* Draw the path for a pinch adjacency so that:
@@ -331,6 +342,12 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
             .attr("multiplicity", d => d.multiplicity)
             .attr("adjIndex", d => d.adjNumber)
             .style("stroke", d => pinchThreadColors(d.threadId));
+
+        if (arrowheads) {
+            pinchAdjacency.attr('marker-end', 'url(#arrowhead)');
+        } else {
+            pinchAdjacency.attr('marker-end', null);
+        }
 
         pinchAdjacency.exit().remove();
 
