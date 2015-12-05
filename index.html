@@ -1,109 +1,113 @@
 <html>
+    <style>
+     .node circle {
+         fill: #fff;
+         stroke: black;
+         stroke-width: 1.5px;
+     }
 
-<style>
+     .node rect {
+         fill: #fff;
+         stroke: black;
+         stroke-width: 1.5px;
+     }
 
-.node circle {
-  fill: #fff;
-  stroke: black;
-  stroke-width: 1.5px;
-}
+     .node .active {
+         fill: red;
+         stroke-width: 3px;
+     }
 
-.node rect {
-  fill: #fff;
-  stroke: black;
-  stroke-width: 1.5px;
-}
+     text.label {
+         fill: black;
+         stroke: none;
+         pointer-events: none;
+         font: 10px sans-serif;
+     }
 
-.node .active {
-  fill: red;
-  stroke-width: 3px;
-}
+     .adjacency {
+         stroke-dasharray: 2,2;
+         fill: none;
+         stroke: #000;
+         stroke-width: 2px;
+     }
 
-text.label {
-  fill: black;
-  stroke: none;
-  pointer-events: none;
-  font: 10px sans-serif;
-}
+     .adjacency.active {
+         stroke-dasharray: 4,4;
+         stroke-width: 4px;
+     }
 
-.adjacency {
-  stroke-dasharray: 2,2;
-  fill: none;
-  stroke: #000;
-  stroke-width: 2px;
-}
+     .block {
+         fill: none;
+         stroke: #000;
+         stroke-width: 2px;
+     }
 
-.adjacency.active {
-  stroke-dasharray: 4,4;
-  stroke-width: 4px;
-}
+     .block.active {
+         stroke: red;
+         stroke-width: 5px;
+     }
 
-.block {
-  fill: none;
-  stroke: #000;
-  stroke-width: 2px;
-}
-
-.block.active {
-  stroke: red;
-  stroke-width: 5px;
-}
-
-</style>
-  <head>
-  </head>
-  <body>
-    <script src="node_modules/d3/d3.js"></script>
-    <script src="compiled/js/newick.js"></script>
-    <script src="compiled/js/onlineCactusViz.js"></script>
-    <div id="cactusGraph" style="border-width: 2px; border-style: solid"></div>
-    <div id="pinchGraph" style="border-width: 2px; border-style: solid"></div>
-    <input id="previous-step" type="button" value="Previous step"/>
-    <input id="next-step" type="button" value="Next step"/>
-    <input id="arrowheads" type="checkbox">Pinch adjacency arrowheads</input>
-    <p id="curStepInfo"></p>
-    <script>
-      d3.text("/cactusDump", function (text) {
-          var lines = text.split("\n");
-          var liness = lines.reduce(function(a, l) {
-                                        var fields = l.split("\t");
-                                        if (fields[0] === 'BATCH' || fields[0] === 'STEP') {
-                                            a.push([l]);
-                                        } else {
-                                            a[a.length - 1].push(l);
-                                        }
-                                        return a;
-                                    }, []);
-          var updateCactusGraph = buildCactusGraph();
-          var updatePinchGraph = buildPinchGraph();
-          var curStepIndex = 0;
-          var pinchArrowheads = false;
-          function nextStep() {
-              curStepIndex++;
-              update();
-          }
-          function prevStep() {
-              curStepIndex--;
-              update();
-          }
-          function update() {
-              var lines = liness[curStepIndex];
-              d3.select('#curStepInfo').text(lines[0]);
-              parseCactusDump(lines, function (cactusDump) {
-                  updateCactusGraph(cactusDump.cactusTrees);
-                  updatePinchGraph(cactusDump.pinchData, pinchArrowheads);
-              });
-          }
-          function changeArrowheads() {
-              pinchArrowheads = this.checked;
-              console.log(pinchArrowheads);
-              update();
-          }
-          d3.select('#next-step').on('click', nextStep);
-          d3.select('#previous-step').on('click', prevStep);
-          d3.select('#arrowheads').on('change', changeArrowheads);
-          update();
-      });
-    </script>
-  </body>
+    </style>
+    <head>
+    </head>
+    <body>
+        <script src="node_modules/d3/d3.js"></script>
+        <script src="compiled/js/newick.js"></script>
+        <script src="compiled/js/onlineCactusViz.js"></script>
+        <div id="cactusGraph" style="border-width: 2px; border-style: solid"></div>
+        <div id="pinchGraph" style="border-width: 2px; border-style: solid"></div>
+        <input id="previous-step" type="button" value="Previous step"/>
+        <input id="next-step" type="button" value="Next step"/>
+        <input id="arrowheads" type="checkbox">Pinch adjacency arrowheads</input>
+        <p id="curStepInfo"></p>
+        <script>
+         d3.text("/cactusDump", function (text) {
+             var lines = text.split("\n");
+             var liness = lines.reduce(function(a, l) {
+                 var fields = l.split("\t");
+                 if (fields[0] === 'BATCH' || fields[0] === 'STEP') {
+                     a.push([l]);
+                 } else {
+                     a[a.length - 1].push(l);
+                 }
+                 return a;
+             }, []);
+             var cactusGraph = buildCactusGraph();
+             var pinchGraph = buildPinchGraph();
+             var curStepIndex = 0;
+             var pinchArrowheads = false;
+             function nextStep() {
+                 curStepIndex++;
+                 update();
+             }
+             function prevStep() {
+                 curStepIndex--;
+                 update();
+             }
+             function update() {
+                 var lines = liness[curStepIndex];
+                 d3.select('#curStepInfo').text(lines[0]);
+                 parseCactusDump(lines, function (cactusDump) {
+                     cactusGraph.update(cactusDump.cactusTrees);
+                     pinchGraph.update(cactusDump.pinchData, pinchArrowheads);
+                 });
+                 d3.selectAll('line.block').on('click', function(d) {
+                     cactusGraph.zoomToBlock(d.name);
+                 });
+                 d3.selectAll('path.block').on('click', function(d) {
+                     pinchGraph.zoomToBlock(d.name);
+                 });
+             }
+             function changeArrowheads() {
+                 pinchArrowheads = this.checked;
+                 console.log(pinchArrowheads);
+                 update();
+             }
+             d3.select('#next-step').on('click', nextStep);
+             d3.select('#previous-step').on('click', prevStep);
+             d3.select('#arrowheads').on('change', changeArrowheads);
+             update();
+         });
+        </script>
+    </body>
 </html>

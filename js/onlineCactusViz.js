@@ -3,8 +3,17 @@
 /*exported buildCactusGraph, buildPinchGraph, parseCactusDump*/
 /*eslint-env browser*/
 
-function mouseoverNode(d) {
-    var node = selectCorrespondingAdjacencies(d);
+function zoomToBox(zoom, x1, x2, y1, y2) {
+    // TODO: make the final zoom's smaller dimension centered.
+    let size = zoom.size(),
+        width = size[0],
+        height = size[1];
+    zoom.scale(Math.min(width / (x2 - x1), height / (y2 - y1)));
+    zoom.translate([-x1 * zoom.scale(), -y1 * zoom.scale()]);
+}
+
+function mouseoverNode() {
+    var node = d3.select(this);
 
     node.append('text')
         .attr('class', 'label')
@@ -27,8 +36,8 @@ function mouseoverNode(d) {
     node.select('rect').classed('active', true);
 }
 
-function mouseoutNode(d) {
-    var node = selectCorrespondingNetAndNodes(d);
+function mouseoutNode() {
+    var node = d3.select(this);
     node.select('circle').classed('active', false);
     node.select('rect').classed('active', false);
     node.selectAll('text').remove();
@@ -38,24 +47,18 @@ function mouseoverBlock(d) {
     var block = d3.selectAll('g.block').filter(d2 => d.name === d2.name);
     block.select('.block').classed('active', true);
     block.append('text')
-        .attr('class', 'label')
-        .attr('x', (d.source.x + d.target.x) / 2)
-        .attr('y', (d.source.y + d.target.y) / 2)
-        .attr('dx', -10)
-        .attr('dy', 20)
-        .text(d => `${d.name}\ndegree: ${d.segments.length}\nlength: ${d.length}`);
+         .attr('class', 'label')
+         .attr('x', (d.source.x + d.target.x) / 2)
+         .attr('y', (d.source.y + d.target.y) / 2)
+         .attr('dx', -10)
+         .attr('dy', 20)
+         .text(d => `${d.name}\ndegree: ${d.segments.length}\nlength: ${d.length}`);
 }
 
 function mouseoutBlock(d) {
     var block = d3.selectAll('.block').filter(d2 => d.name === d2.name);
     block.select('.block').classed('active', false);
     block.selectAll('text').remove();
-}
-
-function zoomToBlock(zoomContainer) {
-    return function (d) {
-        var block = d3.selectAll('.block').filter(d2 => d.name === d2.name);
-    };
 }
 
 function mouseoverAdjacency() {
@@ -78,10 +81,6 @@ function selectCorrespondingAdjacencies(d) {
             return netToNodes[nodeName].some(x => x === d.name);
         }
     });
-}
-
-function zoomToAdjacencies(adjacencyNames) {
-    
 }
 
 function pinchLayout(pinchData) {
@@ -308,107 +307,120 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
         .style('opacity', 0.7);
 
     var zoomContainer = pinchG.append('g');
-    return function updatePinchGraph(pinchData, arrowheads=false, transitionTime=1000) {
-        var pinch = pinchLayout(pinchData);
-        function pinchAdjacencyPath(d) {
-            /* Draw the path for a pinch adjacency so that:
-             - multiple adjacencies are clearly separated
-             - long adjacencies are separated from the rest, even if
-             there is no change in y */
+    return {
+        zoomToBlock: function zoomToBlock(name) {
+            let block = pinchG.selectAll("g.block").filter(d => d.name === name);
+            let d = block.data()[0];
+            let paddingRatio = 5.0,
+                horizontalPadding = paddingRatio * (d.end1.x - d.end0.x),
+                verticalPadding = paddingRatio * (d.end1.y - d.end0.y);
+            zoomToBox(pinchZoom,
+                               d.end0.x - horizontalPadding,
+                               d.end1.x + horizontalPadding,
+                               d.end0.y - verticalPadding,
+                               d.end1.y + verticalPadding);
+            zoomContainer.call(pinchZoom.event);
+        },
+        update: function updatePinchGraph(pinchData, arrowheads=false, transitionTime=1000) {
+            var pinch = pinchLayout(pinchData);
+            function pinchAdjacencyPath(d) {
+                /* Draw the path for a pinch adjacency so that:
+                 - multiple adjacencies are clearly separated
+                 - long adjacencies are separated from the rest, even if
+                 there is no change in y */
 
-            var apexX = (d.source.x + d.target.x) / 2;
-            var apexY = (d.source.y + d.target.y) / 2;
-            if (Number.isNaN(apexY)) {
-                throw 'adjacency position could not be computed';
+                var apexX = (d.source.x + d.target.x) / 2;
+                var apexY = (d.source.y + d.target.y) / 2;
+                if (Number.isNaN(apexY)) {
+                    throw 'adjacency position could not be computed';
+                }
+                if (d.multiplicity % 2 === 0 && d.adjNumber === 0) {
+                    apexY += 30 * Math.pow(-1, d.adjNumber);
+                } else if (d.multiplicity % 2 === 0) {
+                    apexY += d.adjNumber * 30 * Math.pow(-1, d.adjNumber);
+                } else {
+                    apexY += Math.ceil(d.adjNumber / 2) * 30 * Math.pow(-1, d.adjNumber);
+                }
+                if (Math.abs(d.target.x - d.source.x) > 20) {
+                    apexY += d.target.x - d.source.x;
+                }
+                return `M ${d.source.x} ${d.source.y}`
+                    + ` Q ${apexX} ${apexY}`
+                    + ` ${d.target.x} ${d.target.y}`;
             }
-            if (d.multiplicity % 2 === 0 && d.adjNumber === 0) {
-                apexY += 30 * Math.pow(-1, d.adjNumber);
-            } else if (d.multiplicity % 2 === 0) {
-                apexY += d.adjNumber * 30 * Math.pow(-1, d.adjNumber);
+
+            var pinchThreadColors = d3.scale.category10().domain(pinch.threads);
+
+            var pinchAdjacency = zoomContainer.selectAll('.adjacency')
+                    .data(pinch.adjacencies);
+
+            pinchAdjacency.enter()
+                .append('path')
+                .attr('class', 'adjacency')
+                .on('mouseover', mouseoverAdjacency)
+                .on('mouseout', mouseoutAdjacency);
+
+            pinchAdjacency
+                .transition().duration(transitionTime)
+                .attr('d', pinchAdjacencyPath)
+                .attr('multiplicity', d => d.multiplicity)
+                .attr('adjIndex', d => d.adjNumber)
+                .style('stroke', d => pinchThreadColors(d.threadId));
+
+            if (arrowheads) {
+                pinchAdjacency.attr('marker-end', 'url(#arrowhead)');
             } else {
-                apexY += Math.ceil(d.adjNumber / 2) * 30 * Math.pow(-1, d.adjNumber);
+                pinchAdjacency.attr('marker-end', null);
             }
-            if (Math.abs(d.target.x - d.source.x) > 20) {
-                apexY += d.target.x - d.source.x;
-            }
-            return `M ${d.source.x} ${d.source.y}`
-                + ` Q ${apexX} ${apexY}`
-                + ` ${d.target.x} ${d.target.y}`;
+
+            pinchAdjacency.exit().remove();
+
+            console.log(`pinchAdjacency entering: ${pinchAdjacency.enter().size()} updating: ${pinchAdjacency.size()} leaving: ${pinchAdjacency.exit().size()}`);
+
+            var pinchBlock = zoomContainer.selectAll('g.block')
+                    .data(pinch.blocks, d => d.name);
+
+            console.log(`pinchBlock entering: ${pinchBlock.enter().size()} updating: ${pinchBlock.size()} leaving: ${pinchBlock.exit().size()}`);
+
+            pinchBlock.enter()
+                .append('g')
+                .attr('class', 'block')
+                .append('line')
+                .attr('class', 'block')
+                .on('mouseover', mouseoverBlock)
+                .on('mouseout', mouseoutBlock);
+
+            pinchBlock.select('line')
+                .transition().duration(transitionTime)
+                .attr('x1', d => d.end0.x)
+                .attr('y1', d => d.end0.y)
+                .attr('x2', d => d.end1.x)
+                .attr('y2', d => d.end1.y)
+                .style('stroke-width', d => d.segments.length);
+
+            pinchBlock.exit().remove();
+
+            let pinchNode = zoomContainer.selectAll('.node')
+                    .data(pinch.ends);
+
+            console.log(`pinchNode entering: ${pinchNode.enter().size()} updating: ${pinchNode.size()} leaving: ${pinchNode.exit().size()}`);
+
+            // Add the SVG elements for the new ends.
+            pinchNode.enter()
+                .append('g')
+                .attr('class', 'node')
+                .append('circle');
+
+            // Update existing and new ends.
+            pinchNode.select('circle')
+                .transition().duration(transitionTime)
+                .attr('r', 4.5)
+                .attr('cx', d => d.x)
+                .attr('cy', d => d.y);
+
+            // Remove old ends that are no longer present.
+            pinchNode.exit().remove();
         }
-
-        var pinchThreadColors = d3.scale.category10().domain(pinch.threads);
-
-        var pinchAdjacency = zoomContainer.selectAll('.adjacency')
-                .data(pinch.adjacencies);
-
-        pinchAdjacency.enter()
-            .append('path')
-            .attr('class', 'adjacency')
-            .on('mouseover', mouseoverAdjacency)
-            .on('mouseout', mouseoutAdjacency);
-
-        pinchAdjacency
-            .transition().duration(transitionTime)
-            .attr('d', pinchAdjacencyPath)
-            .attr('multiplicity', d => d.multiplicity)
-            .attr('adjIndex', d => d.adjNumber)
-            .style('stroke', d => pinchThreadColors(d.threadId));
-
-        if (arrowheads) {
-            pinchAdjacency.attr('marker-end', 'url(#arrowhead)');
-        } else {
-            pinchAdjacency.attr('marker-end', null);
-        }
-
-        pinchAdjacency.exit().remove();
-
-        console.log(`pinchAdjacency entering: ${pinchAdjacency.enter().size()} updating: ${pinchAdjacency.size()} leaving: ${pinchAdjacency.exit().size()}`);
-
-        var pinchBlock = zoomContainer.selectAll('g.block')
-                .data(pinch.blocks, d => d.name);
-
-        console.log(`pinchBlock entering: ${pinchBlock.enter().size()} updating: ${pinchBlock.size()} leaving: ${pinchBlock.exit().size()}`);
-
-        pinchBlock.enter()
-            .append('g')
-            .attr('class', 'block')
-            .append('line')
-            .attr('class', 'block')
-            .on('mouseover', mouseoverBlock)
-            .on('mouseout', mouseoutBlock);
-
-        pinchBlock.select('line')
-            .transition().duration(transitionTime)
-            .attr('x1', d => d.end0.x)
-            .attr('y1', d => d.end0.y)
-            .attr('x2', d => d.end1.x)
-            .attr('y2', d => d.end1.y)
-            .style('stroke-width', d => d.segments.length);
-
-        pinchBlock.exit().remove();
-
-        let pinchNode = zoomContainer.selectAll('.node')
-                .data(pinch.ends);
-
-        console.log(`pinchNode entering: ${pinchNode.enter().size()} updating: ${pinchNode.size()} leaving: ${pinchNode.exit().size()}`);
-
-        // Add the SVG elements for the new ends.
-        pinchNode.enter()
-            .append('g')
-            .attr('class', 'node')
-            .on('mouseover', mouseoverNode)
-            .on('mouseout', mouseoutNode)
-            .append('circle');
-
-        // Update existing and new ends.
-        pinchNode.select('circle')
-            .transition().duration(transitionTime)
-            .attr('r', 4.5)
-            .attr('cx', d => d.x)
-            .attr('cy', d => d.y);
-
-        // Remove old ends that are no longer present.
-        pinchNode.exit().remove();
     };
 }
 
@@ -437,15 +449,17 @@ function buildCactusGraph(margin={top: 20, right: 80, bottom: 20, left: 80}) {
             .domain([0, height])
             .range([0, height]);
 
+    let zoom = d3.behavior.zoom().x(y).y(x).size([width, height]).on('zoom', function () {
+        svg.selectAll('g.node')
+            .attr('transform', d => `translate(${y(d.y)}, ${x(d.x)})`);
+        svg.selectAll('path.block')
+            .attr('d', diagonal);
+    });
+
     var svg = d3.select('#cactusGraph').append('svg')
             .attr('width', width + margin.left + margin.right)
             .attr('height', height + margin.top + margin.bottom)
-            .call(d3.behavior.zoom().x(y).y(x).on('zoom', function () {
-                svg.selectAll('g.node')
-                    .attr('transform', d => `translate(${y(d.y)}, ${x(d.x)})`);
-                svg.selectAll('path.block')
-                    .attr('d', diagonal);
-            }))
+            .call(zoom)
             .append('g')
             .attr('transform', `translate(${margin.left}, ${margin.top})`);
 
@@ -454,66 +468,81 @@ function buildCactusGraph(margin={top: 20, right: 80, bottom: 20, left: 80}) {
     var diagonal = d3.svg.diagonal()
             .projection(d => [y(d.y), x(d.x)]);
 
-    return function updateCactusGraph(data, transitionTime=1000) {
-        var nodes = forest.nodes(data.map(d => d.tree)),
-            links = data.reduce((a, e) => a.concat(e.links), []);
+    return {
+        zoomToBlock: function zoomToBlock(name) {
+            let block = svg.selectAll("path.block").filter(d => d.name === name);
+            let d = block.data()[0];
+            let paddingRatio = 0.5,
+                horizontalPadding = paddingRatio * (d.target.y - d.source.y),
+                verticalPadding = paddingRatio * (d.target.x - d.source.x);
+            zoomToBox(zoom,
+                      d.source.y - horizontalPadding,
+                      d.target.y + horizontalPadding,
+                      d.source.x - verticalPadding,
+                      d.target.x + verticalPadding);
+            svg.call(zoom.event);
+        },
+        update: function updateCactusGraph(data, transitionTime=1000) {
+            var nodes = forest.nodes(data.map(d => d.tree)),
+                links = data.reduce((a, e) => a.concat(e.links), []);
 
-        let cactusBlocks = svg.selectAll('g.block')
-                .data(links, d => d.name);
+            let cactusBlocks = svg.selectAll('g.block')
+                    .data(links, d => d.name);
 
-        console.log(`cactusBlocks entering: ${cactusBlocks.enter().size()} updating: ${cactusBlocks.size()} leaving: ${cactusBlocks.exit().size()}`);
+            console.log(`cactusBlocks entering: ${cactusBlocks.enter().size()} updating: ${cactusBlocks.size()} leaving: ${cactusBlocks.exit().size()}`);
 
-        cactusBlocks.transition().duration(transitionTime).style('opacity', 1).select('path').attr('d', diagonal);
+            cactusBlocks.transition().duration(transitionTime).style('opacity', 1).select('path').attr('d', diagonal);
 
-        cactusBlocks.enter()
-            .append('g')
-            .attr('class', 'block')
-            .append('path')
-            .attr('class', 'block')
-            .on('mouseover', mouseoverBlock)
-            .on('mouseout', mouseoutBlock)
-            .style('opacity', 0)
-            .attr('d', diagonal)
-            .transition()
-            .duration(transitionTime)
-            .style('opacity', 1);
+            cactusBlocks.enter()
+                .append('g')
+                .attr('class', 'block')
+                .append('path')
+                .attr('class', 'block')
+                .on('mouseover', mouseoverBlock)
+                .on('mouseout', mouseoutBlock)
+                .style('opacity', 0)
+                .attr('d', diagonal)
+                .transition()
+                .duration(transitionTime)
+                .style('opacity', 1);
 
-        cactusBlocks.exit().transition().duration(transitionTime).style('opacity', 0.0).transition().remove();
+            cactusBlocks.exit().transition().duration(transitionTime).style('opacity', 0.0).transition().remove();
 
-        let cactusNodes = svg.selectAll('g.node')
-                .data(nodes, d => d.name);
+            let cactusNodes = svg.selectAll('g.node')
+                    .data(nodes, d => d.name);
 
-        console.log(`cactusNodes entering: ${cactusNodes.enter().size()} updating: ${cactusNodes.size()} leaving: ${cactusNodes.exit().size()}`);
+            console.log(`cactusNodes entering: ${cactusNodes.enter().size()} updating: ${cactusNodes.size()} leaving: ${cactusNodes.exit().size()}`);
 
-        cactusNodes.transition().duration(transitionTime).attr('transform', d => `translate(${y(d.y)}, ${x(d.x)})`).style('opacity', 1);
+            cactusNodes.transition().duration(transitionTime).attr('transform', d => `translate(${y(d.y)}, ${x(d.x)})`).style('opacity', 1);
 
-        cactusNodes.enter()
-            .append('g')
-            .attr('class', 'node')
-            .attr('transform', d => `translate(${y(d.y)}, ${x(d.x)})`)
-            .on('mouseover', mouseoverNode)
-            .on('mouseout', mouseoutNode)
-            .append(function (d) {
-                var elem;
-                if (d.type === 'NET') {
-                    // Nets are represented by a circle.
-                    elem = document.createElementNS(d3.ns.prefix.svg, 'circle');
-                    d3.select(elem).attr('r', 4.5);
-                } else if (d.type === 'CHAIN') {
-                    // Chains are represented by a square. Since
-                    // rects have their top-left corner at their
-                    // x,y coordinates, we need to shift it a bit
-                    // to center it properly.
-                    elem = document.createElementNS(d3.ns.prefix.svg, 'rect');
-                    d3.select(elem).attr('width', 9).attr('height', 9)
-                        .attr('transform', 'translate(-4.5, -4.5)');
-                }
-                d3.select(elem).style('opacity', 0);
-                d3.select(elem).transition().duration(transitionTime).style('opacity', 1);
-                return elem;
-            });
+            cactusNodes.enter()
+                .append('g')
+                .attr('class', 'node')
+                .attr('transform', d => `translate(${y(d.y)}, ${x(d.x)})`)
+                .on('mouseover', mouseoverNode)
+                .on('mouseout', mouseoutNode)
+                .append(function (d) {
+                    var elem;
+                    if (d.type === 'NET') {
+                        // Nets are represented by a circle.
+                        elem = document.createElementNS(d3.ns.prefix.svg, 'circle');
+                        d3.select(elem).attr('r', 4.5);
+                    } else if (d.type === 'CHAIN') {
+                        // Chains are represented by a square. Since
+                        // rects have their top-left corner at their
+                        // x,y coordinates, we need to shift it a bit
+                        // to center it properly.
+                        elem = document.createElementNS(d3.ns.prefix.svg, 'rect');
+                        d3.select(elem).attr('width', 9).attr('height', 9)
+                            .attr('transform', 'translate(-4.5, -4.5)');
+                    }
+                    d3.select(elem).style('opacity', 0);
+                    d3.select(elem).transition().duration(transitionTime).style('opacity', 1);
+                    return elem;
+                });
 
-        cactusNodes.exit().transition().duration(transitionTime).style('opacity', 0.0).transition().remove();
+            cactusNodes.exit().transition().duration(transitionTime).style('opacity', 0.0).transition().remove();
+        }
     };
 }
 
