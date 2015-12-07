@@ -87,15 +87,35 @@
              function update() {
                  var lines = liness[curStepIndex];
                  d3.select('#curStepInfo').text(lines[0]);
-                 parseCactusDump(lines, function (cactusDump) {
-                     cactusGraph.update(cactusDump.cactusTrees);
-                     pinchGraph.update(cactusDump.pinchData, pinchArrowheads);
-                 });
+                 var cactusDump = parseCactusDump(lines);
+                 cactusGraph.update(cactusDump.cactusTrees);
+                 pinchGraph.update(cactusDump.pinchData, pinchArrowheads);
                  d3.selectAll('line.block').on('click', function(d) {
                      cactusGraph.zoomToBlock(d.name);
                  });
                  d3.selectAll('path.block').on('click', function(d) {
                      pinchGraph.zoomToBlock(d.name);
+                 });
+                 // Highlight adjacencies within a net on mouseover
+                 d3.select('#cactusGraph').selectAll('g.node').on('mouseover.comprisingAdjacencies', function(d) {
+                     cactusDump.netToComponents[d.name].forEach(function(component) {
+                         pinchGraph.highlightAdjacencyComponent(component);
+                     });
+                 });
+                 // Unhighlight adjacencies within a net on mouseout
+                 d3.select('#cactusGraph').selectAll('g.node').on('mouseout.comprisingAdjacencies', function(d) {
+                     cactusDump.netToComponents[d.name].forEach(function(component) {
+                         pinchGraph.unhighlightAdjacencyComponent(component);
+                     });
+                 });
+
+                 // Highlight the net containing an adjacency on mouseover
+                 d3.select('#pinchGraph').selectAll('path.adjacency').on('mouseover.parentNet', function(d) {
+                     cactusGraph.highlightNet(cactusDump.componentToNet[d.component]);
+                 });
+                 // Unhighlight the net containing an adjacency on mouseout
+                 d3.select('#pinchGraph').selectAll('path.adjacency').on('mouseout.parentNet', function(d) {
+                     cactusGraph.unhighlightNet(cactusDump.componentToNet[d.component]);
                  });
              }
              function changeArrowheads() {

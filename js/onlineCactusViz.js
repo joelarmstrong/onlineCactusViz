@@ -69,20 +69,6 @@ function mouseoutAdjacency() {
     d3.select(this).classed('active', false);
 }
 
-function selectCorrespondingAdjacencies(d) {
-    var nodeName = d.name;
-    return d3.selectAll('g.node').filter(function(d) {
-        if (d.name === nodeName) {
-            return true;
-        }
-        if (nodeName in nodeToNet) {
-            return d.name === nodeToNet[nodeName];
-        } else {
-            return netToNodes[nodeName].some(x => x === d.name);
-        }
-    });
-}
-
 function pinchLayout(pinchData) {
     var pinch = {};
     var separation = 20;
@@ -129,6 +115,7 @@ function pinchLayout(pinchData) {
                     adjacency.target = nameToBlock[otherBlock].end1;
                 }
                 adjacency.length = otherSegment.start - segment.end;
+                adjacency.component = segment.rightAdjComponent;
                 return adjacency;
             };
             if (segment.rightAdjacentBlock !== '(nil)') {
@@ -209,7 +196,7 @@ function pinchLayout(pinchData) {
     return pinch;
 }
 
-function parseCactusDump(lines, callback) {
+function parseCactusDump(lines) {
     function parseCactusTree(tree) {
         var links = [];
         function recurse(subtree) {
@@ -238,13 +225,13 @@ function parseCactusDump(lines, callback) {
 
     var cactusTrees = [];
     var pinchGraph = { blocks: [] };
-    var nodeToNet = {};
-    var netToNodes = {};
-    function sextuplets(array) {
+    var componentToNet = {};
+    var netToComponents = {};
+    function octuplets(array) {
         var ret = [];
-        for (var i = 0; i < array.length; i += 6) {
+        for (var i = 0; i < array.length; i += 8) {
             ret.push([array[i], array[i + 1], array[i + 2], array[i + 3],
-                      array[i + 4], array[i + 5]]);
+                      array[i + 4], array[i + 5], array[i + 6], array[i + 7]]);
         }
         return ret;
     }
@@ -256,28 +243,30 @@ function parseCactusDump(lines, callback) {
         }
         if (fields[0] === 'G') {
             pinchGraph.blocks.push({ name: fields[1],
-                                     segments: sextuplets(fields.slice(2)).map(function (segment) {
+                                     segments: octuplets(fields.slice(2)).map(function (segment) {
                                          return { threadId: segment[0],
                                                   start: +segment[1],
                                                   end: +segment[2],
                                                   rightAdjacentBlock: segment[3],
                                                   leftAdjacentBlock: segment[4],
-                                                  blockOrientation: segment[5] };
+                                                  blockOrientation: segment[5],
+                                                  leftAdjComponent: segment[6],
+                                                  rightAdjComponent: segment[7] };
                                      }) });
         }
         if (fields[0] === 'M') {
-            netToNodes[fields[1]] = fields.slice(2);
+            netToComponents[fields[1]] = fields.slice(2);
             fields.slice(2).forEach(function (node) {
-                nodeToNet[node] = fields[1];
+                componentToNet[node] = fields[1];
             });
         }
     }
 
     cactusTrees = cactusTrees.map(t => parseCactusTree(t));
-    callback({ cactusTrees: cactusTrees,
-               nodeToNet: nodeToNet,
-               netToNodes: netToNodes,
-               pinchData: pinchGraph });
+    return { cactusTrees: cactusTrees,
+             componentToNet: componentToNet,
+             netToComponents: netToComponents,
+             pinchData: pinchGraph };
 }
 
 function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
@@ -320,6 +309,12 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
                                d.end0.y - verticalPadding,
                                d.end1.y + verticalPadding);
             zoomContainer.call(pinchZoom.event);
+        },
+        highlightAdjacencyComponent: function highlightAdjacencyComponent(componentName) {
+            d3.selectAll('.adjacency').filter(d => d.component === componentName).each(mouseoverAdjacency);
+        },
+        unhighlightAdjacencyComponent: function unhighlightAdjacencyComponent(componentName) {
+            d3.selectAll('.adjacency').filter(d => d.component === componentName).each(mouseoutAdjacency);
         },
         update: function updatePinchGraph(pinchData, arrowheads=false, transitionTime=1000) {
             var pinch = pinchLayout(pinchData);
@@ -469,8 +464,14 @@ function buildCactusGraph(margin={top: 20, right: 80, bottom: 20, left: 80}) {
             .projection(d => [y(d.y), x(d.x)]);
 
     return {
+        highlightNet: function highlightNet(name) {
+            svg.selectAll('g.node').filter(d => d.name === name).each(mouseoverNode);
+        },
+        unhighlightNet: function unhighlightNet(name) {
+            svg.selectAll('g.node').filter(d => d.name === name).each(mouseoutNode);
+        },
         zoomToBlock: function zoomToBlock(name) {
-            let block = svg.selectAll("path.block").filter(d => d.name === name);
+            let block = svg.selectAll('path.block').filter(d => d.name === name);
             let d = block.data()[0];
             let paddingRatio = 0.5,
                 horizontalPadding = paddingRatio * (d.target.y - d.source.y),
