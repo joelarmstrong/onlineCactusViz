@@ -493,15 +493,17 @@ function buildCactusGraph(margin={top: 20, right: 80, bottom: 20, left: 80}) {
 
             cactusBlocks.transition().duration(transitionTime).style('opacity', 1).select('path').attr('d', diagonal);
 
-            cactusBlocks.enter()
+            let newBlockG = cactusBlocks.enter()
                 .append('g')
-                .attr('class', 'block')
+                .attr('class', 'block');
+            newBlockG
                 .append('path')
                 .attr('class', 'block')
                 .on('mouseover', mouseoverBlock)
                 .on('mouseout', mouseoutBlock)
+                .attr('d', diagonal);
+            newBlockG
                 .style('opacity', 0)
-                .attr('d', diagonal)
                 .transition()
                 .duration(transitionTime)
                 .style('opacity', 1);
