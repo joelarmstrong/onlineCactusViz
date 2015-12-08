@@ -4,12 +4,26 @@
 /*eslint-env browser*/
 
 function zoomToBox(zoom, x1, x2, y1, y2) {
-    // TODO: make the final zoom's smaller dimension centered.
     let size = zoom.size(),
         width = size[0],
-        height = size[1];
-    zoom.scale(Math.min(width / (x2 - x1), height / (y2 - y1)));
-    zoom.translate([-x1 * zoom.scale(), -y1 * zoom.scale()]);
+        height = size[1],
+        widthScale = width / (x2 - x1),
+        heightScale = height / (y2 - y1);
+    if (widthScale < heightScale) {
+        zoom.scale(widthScale);
+        // The height (in data space) covered by the window.
+        let dataHeight = height / widthScale;
+        zoom.translate([-x1 * zoom.scale(),
+                        // Center the bounding box along the y-axis
+                        // since there is extra room
+                        (-y1 + (dataHeight - (y2 - y1)) / 2) * zoom.scale()]);
+    } else {
+        zoom.scale(heightScale);
+        // The width (in data space) covered by the window.
+        let dataWidth = width / heightScale;
+        zoom.translate([(-x1 + (dataWidth - (x2 - x1)) / 2) * zoom.scale(),
+                        -y1 * zoom.scale()]);
+    }
 }
 
 function mouseoverNode() {
