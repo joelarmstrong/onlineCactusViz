@@ -1,27 +1,30 @@
 <html>
     <style>
-     .node circle {
+     .net, .chain, .end {
          fill: #fff;
          stroke: black;
          stroke-width: 1.5px;
      }
 
-     .node rect {
-         fill: #fff;
-         stroke: black;
-         stroke-width: 1.5px;
-     }
-
-     .node .active {
+     .net .active, .chain .active {
          fill: red;
          stroke-width: 3px;
      }
 
+     text {
+         pointer-events: none;
+         font: 10px sans-serif;
+     }
+     
      text.label {
          fill: black;
          stroke: none;
-         pointer-events: none;
-         font: 10px sans-serif;
+     }
+
+     text.shadow {
+         stroke: white;
+         fill: white;
+         stroke-width: 5px;
      }
 
      .adjacency {
@@ -76,9 +79,7 @@
              var pinchGraph = buildPinchGraph();
              var curStepIndex = 0;
              if (window.location.hash) {
-                 console.log(window.location.hash);
                  curStepIndex = +window.location.hash.substring(1);
-                 console.log(curStepIndex);
              }
              var pinchArrowheads = false;
              function nextStep() {
@@ -100,16 +101,16 @@
                      cactusGraph.zoomToBlock(d.name);
                  });
                  d3.selectAll('path.block').on('click', function(d) {
-                     pinchGraph.zoomToBlock(d.name);
+                     pinchGraph.zoomToBlocks([d.name]);
                  });
                  // Highlight adjacencies within a net on mouseover
-                 d3.select('#cactusGraph').selectAll('g.node').on('mouseover.adjacencies', function(d) {
+                 d3.select('#cactusGraph').selectAll('g.net').on('mouseover.adjacencies', function(d) {
                      cactusDump.netToComponents[d.name].forEach(function(component) {
                          pinchGraph.highlightAdjacencyComponent(component);
                      });
                  });
                  // Unhighlight adjacencies within a net on mouseout
-                 d3.select('#cactusGraph').selectAll('g.node').on('mouseout.adjacencies', function(d) {
+                 d3.select('#cactusGraph').selectAll('g.net').on('mouseout.adjacencies', function(d) {
                      cactusDump.netToComponents[d.name].forEach(function(component) {
                          pinchGraph.unhighlightAdjacencyComponent(component);
                      });
@@ -126,11 +127,23 @@
 
                  // When a net is clicked, zoom to the bounding box of
                  // its adjacency component(s).
-                 d3.select('#cactusGraph').selectAll('g.node').on('click.adjacencies', function(d) {
+                 d3.select('#cactusGraph').selectAll('g.net').on('click.adjacencies', function(d) {
                      pinchGraph.zoomToAdjacencyComponents(cactusDump.netToComponents[d.name]);
                  });
                  d3.select('#pinchGraph').selectAll('path.adjacency').on('click.net', function(d) {
                      cactusGraph.zoomToNet(cactusDump.componentToNet[d.component]);
+                 });
+
+                 // When a chain is clicked, zoom to the bounding box of its blocks.
+                 d3.select('#cactusGraph').selectAll('g.chain').on('click', function(d) {
+                     var names = d3.select('#cactusGraph')
+                                   .selectAll('g.block')
+                                   .filter(function (d2) {
+                                       return d2.source === d || d2.target === d;
+                                   })
+                                   .data()
+                                   .map(function (d2) { return d2.name });
+                     pinchGraph.zoomToBlocks(names);
                  });
              }
              function changeArrowheads() {
