@@ -312,6 +312,10 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
         .style('opacity', 0.8);
 
     var zoomContainer = pinchG.append('g');
+
+    // Need to keep a list of the threads here--otherwise the color
+    // for a particular thread can change if new threads are added.
+    let pinchThreads = [];
     return {
         zoomToBlock: function zoomToBlock(name) {
             let block = pinchG.selectAll("g.block").filter(d => d.name === name);
@@ -331,10 +335,9 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
             let minX = Number.MAX_VALUE, maxX = Number.MIN_VALUE,
                 minY = Number.MAX_VALUE, maxY = Number.MIN_VALUE;
             d3.selectAll('.adjacency')
-                .filter(d => componentNames.includes(d.component))
+                .filter(d => componentNames.indexOf(d.component) >= 0)
                 .each(function () {
                     let bbox = this.getBBox();
-                    console.log(bbox);
                     minX = Math.min(minX, bbox.x);
                     maxX = Math.max(maxX, bbox.x + bbox.width);
                     minY = Math.min(minY, bbox.y);
@@ -395,7 +398,14 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
                     + ` ${d.target.x} ${d.target.y}`;
             }
 
-            var pinchThreadColors = d3.scale.category10().domain(pinch.threads);
+            // add any new entries in pinch.threads to the *end* of
+            // pinchThreads, so that each thread has a constant color.
+            pinch.threads.forEach(function(thread) {
+                if (!pinchThreads.indexOf(thread) >= 0) {
+                    pinchThreads.push(thread);
+                }
+            });
+            var pinchThreadColors = d3.scale.category10().domain(pinchThreads);
 
             var pinchAdjacency = zoomContainer.selectAll('.adjacency')
                     .data(pinch.adjacencies);
