@@ -340,7 +340,6 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
                     minY = Math.min(minY, bbox.y);
                     maxY = Math.max(maxY, bbox.y + bbox.height);
                 });
-            console.log([minX, maxX, minY, maxY]);
             zoomToBox(pinchZoom, minX, maxX, minY, maxY);
             zoomContainer.call(pinchZoom.event);
         },

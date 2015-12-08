@@ -75,6 +75,11 @@
              var cactusGraph = buildCactusGraph();
              var pinchGraph = buildPinchGraph();
              var curStepIndex = 0;
+             if (window.location.hash) {
+                 console.log(window.location.hash);
+                 curStepIndex = +window.location.hash.substring(1);
+                 console.log(curStepIndex);
+             }
              var pinchArrowheads = false;
              function nextStep() {
                  curStepIndex++;
@@ -85,6 +90,7 @@
                  update();
              }
              function update() {
+                 window.location.hash = curStepIndex;
                  var lines = liness[curStepIndex];
                  d3.select('#curStepInfo').text(lines[0]);
                  var cactusDump = parseCactusDump(lines);
