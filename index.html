@@ -61,7 +61,7 @@
         <input id="arrowheads" type="checkbox">Pinch adjacency arrowheads</input>
         <p id="curStepInfo"></p>
         <script>
-         d3.text("/cactusDumpSelfLoops", function (text) {
+         d3.text("/cactusDump", function (text) {
              var lines = text.split("\n");
              var liness = lines.reduce(function(a, l) {
                  var fields = l.split("\t");
@@ -97,13 +97,13 @@
                      pinchGraph.zoomToBlock(d.name);
                  });
                  // Highlight adjacencies within a net on mouseover
-                 d3.select('#cactusGraph').selectAll('g.node').on('mouseover.comprisingAdjacencies', function(d) {
+                 d3.select('#cactusGraph').selectAll('g.node').on('mouseover.adjacencies', function(d) {
                      cactusDump.netToComponents[d.name].forEach(function(component) {
                          pinchGraph.highlightAdjacencyComponent(component);
                      });
                  });
                  // Unhighlight adjacencies within a net on mouseout
-                 d3.select('#cactusGraph').selectAll('g.node').on('mouseout.comprisingAdjacencies', function(d) {
+                 d3.select('#cactusGraph').selectAll('g.node').on('mouseout.adjacencies', function(d) {
                      cactusDump.netToComponents[d.name].forEach(function(component) {
                          pinchGraph.unhighlightAdjacencyComponent(component);
                      });
@@ -117,10 +117,18 @@
                  d3.select('#pinchGraph').selectAll('path.adjacency').on('mouseout.parentNet', function(d) {
                      cactusGraph.unhighlightNet(cactusDump.componentToNet[d.component]);
                  });
+
+                 // When a net is clicked, zoom to the bounding box of
+                 // its adjacency component(s).
+                 d3.select('#cactusGraph').selectAll('g.node').on('click.adjacencies', function(d) {
+                     pinchGraph.zoomToAdjacencyComponents(cactusDump.netToComponents[d.name]);
+                 });
+                 d3.select('#pinchGraph').selectAll('path.adjacency').on('click.net', function(d) {
+                     cactusGraph.zoomToNet(cactusDump.componentToNet[d.component]);
+                 });
              }
              function changeArrowheads() {
                  pinchArrowheads = this.checked;
-                 console.log(pinchArrowheads);
                  update();
              }
              d3.select('#next-step').on('click', nextStep);

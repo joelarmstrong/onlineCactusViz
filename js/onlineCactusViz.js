@@ -273,10 +273,12 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
     let width = 1550 - margin.left - margin.right,
         height = 350 - margin.top - margin.bottom;
 
-    var pinchZoom = d3.behavior.zoom().on('zoom', function () {
-        zoomContainer.attr('transform', `translate(${d3.event.translate})`
-                           + `scale(${d3.event.scale})`);
-    });
+    var pinchZoom = d3.behavior.zoom()
+            .size([width, height])
+            .on('zoom', function () {
+                zoomContainer.attr('transform', `translate(${d3.event.translate})`
+                                   + `scale(${d3.event.scale})`);
+            });
     var pinchG = d3.select('#pinchGraph').append('svg')
             .attr('width', width + margin.left + margin.right)
             .attr('height', height + margin.top + margin.bottom)
@@ -304,10 +306,28 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
                 horizontalPadding = paddingRatio * (d.end1.x - d.end0.x),
                 verticalPadding = paddingRatio * (d.end1.y - d.end0.y);
             zoomToBox(pinchZoom,
-                               d.end0.x - horizontalPadding,
-                               d.end1.x + horizontalPadding,
-                               d.end0.y - verticalPadding,
-                               d.end1.y + verticalPadding);
+                      d.end0.x - horizontalPadding,
+                      d.end1.x + horizontalPadding,
+                      d.end0.y - verticalPadding,
+                      d.end1.y + verticalPadding);
+            zoomContainer.call(pinchZoom.event);
+        },
+        zoomToAdjacencyComponents: function zoomToAdjacencyComponent(componentNames) {
+            // Find the bounding box around all adjacencies.
+            let minX = Number.MAX_VALUE, maxX = Number.MIN_VALUE,
+                minY = Number.MAX_VALUE, maxY = Number.MIN_VALUE;
+            d3.selectAll('.adjacency')
+                .filter(d => componentNames.includes(d.component))
+                .each(function () {
+                    let bbox = this.getBBox();
+                    console.log(bbox);
+                    minX = Math.min(minX, bbox.x);
+                    maxX = Math.max(maxX, bbox.x + bbox.width);
+                    minY = Math.min(minY, bbox.y);
+                    maxY = Math.max(maxY, bbox.y + bbox.height);
+                });
+            console.log([minX, maxX, minY, maxY]);
+            zoomToBox(pinchZoom, minX, maxX, minY, maxY);
             zoomContainer.call(pinchZoom.event);
         },
         highlightAdjacencyComponent: function highlightAdjacencyComponent(componentName) {
@@ -487,6 +507,12 @@ function buildCactusGraph(margin={top: 20, right: 80, bottom: 20, left: 80}) {
         },
         unhighlightNet: function unhighlightNet(name) {
             svg.selectAll('g.node').filter(d => d.name === name).each(mouseoutNode);
+        },
+        zoomToNet: function zoomToNet(name) {
+            let net = svg.selectAll('g.node').filter(d => d.name === name);
+            let d = net.data()[0];
+            zoomToBox(zoom, d.y - 50, d.y + 50, d.x - 50, d.x + 50);
+            svg.call(zoom.event);
         },
         zoomToBlock: function zoomToBlock(name) {
             let block = svg.selectAll('path.block').filter(d => d.name === name);
