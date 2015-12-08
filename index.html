@@ -32,7 +32,7 @@
      }
 
      .adjacency.active {
-         stroke-dasharray: 4,4;
+         stroke-dasharray: 0;
          stroke-width: 4px;
      }
 
@@ -61,7 +61,7 @@
         <input id="arrowheads" type="checkbox">Pinch adjacency arrowheads</input>
         <p id="curStepInfo"></p>
         <script>
-         d3.text("/cactusDump", function (text) {
+         d3.text("/cactusDumpSelfLoops", function (text) {
              var lines = text.split("\n");
              var liness = lines.reduce(function(a, l) {
                  var fields = l.split("\t");

@@ -293,7 +293,7 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
         .attr('refY', 2)
         .append('path')
         .attr('d', 'M0,0 L0,4 L4,2 L0,0')
-        .style('opacity', 0.7);
+        .style('opacity', 0.8);
 
     var zoomContainer = pinchG.append('g');
     return {
@@ -322,7 +322,25 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
                 /* Draw the path for a pinch adjacency so that:
                  - multiple adjacencies are clearly separated
                  - long adjacencies are separated from the rest, even if
-                 there is no change in y */
+                 there is no change in y
+                 - self-loops on block ends are visible */
+                if (d.source.x === d.target.x && d.source.y === d.target.y) {
+                    // Self-loops need to loop up and around a bit so that
+                    // they're actually visible.
+                    let controlPointDy = -30 * (d.adjNumber + 1);
+                    if (d.source === d.source.block.end0) {
+                        return `M ${d.source.x} ${d.source.y}`
+                            +  ` c 30 ${controlPointDy} -30 ${controlPointDy} 0 0`;
+                    } else {
+                        // If this is the rightmost end of the block,
+                        // we should loop around clockwise rather than
+                        // counterclockwise, so the adjacency
+                        // arrowhead points toward where the thread is
+                        // headed.
+                        return `M ${d.source.x} ${d.source.y}`
+                            +  ` c -30 ${controlPointDy} 30 ${controlPointDy} 0 0`;
+                    }
+                }
 
                 var apexX = (d.source.x + d.target.x) / 2;
                 var apexY = (d.source.y + d.target.y) / 2;
