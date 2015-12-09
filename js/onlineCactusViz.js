@@ -18,6 +18,7 @@ function findEnclosingBoundingBox(elements) {
 }
 
 function zoomToBox(zoom, x1, x2, y1, y2) {
+    console.log(x1, x2, y1, y2);
     // Ensure that we can't get negative values for x2 - x1 and y2 - y1.
     [x1, x2] = d3.extent([x1, x2]);
     [y1, y2] = d3.extent([y1, y2]);
@@ -33,6 +34,10 @@ function zoomToBox(zoom, x1, x2, y1, y2) {
     zoom.translate([(-x1 + (dataWidth - (x2 - x1)) / 2) * zoom.scale(),
                     (-y1 + (dataHeight - (y2 - y1)) / 2) * zoom.scale()]);
 }
+
+// FIXME: should separate these mouseover/mouseout function to be
+// specific to pinch or cactus, and move the
+// highlight-corresponding-block, etc. code outside.
 
 function mouseoverNode(d) {
     var node = d3.select(this);
@@ -75,13 +80,22 @@ function mouseoutNode() {
 function mouseoverBlock(d) {
     var block = d3.selectAll('g.block').filter(d2 => d.name === d2.name);
     block.select('.block').classed('active', true);
+
+    let text;
+
     block.append('text')
          .attr('class', 'label')
          .attr('x', (d.source.x + d.target.x) / 2)
          .attr('y', (d.source.y + d.target.y) / 2)
          .attr('dx', -10)
          .attr('dy', 20)
-         .text(d => `${d.name}\ndegree: ${d.segments.length}\nlength: ${d.length}`);
+         .text(function (d2) {
+             if ('segments' in d2) {
+                 return `${d2.name}\ndegree: ${d2.segments.length}\nlength: ${d2.segments[0].end - d2.segments[0].start}`;
+             } else {
+                 return `${d2.name}\nlength: ${d2.length}`;
+             }
+         });
 }
 
 function mouseoutBlock(d) {
@@ -333,7 +347,7 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
     return {
         zoomToBlocks: function zoomToBlocks(names) {
             let elements = [];
-            pinchG.selectAll("g.block").filter(d => names.indexOf(d.name) >= 0).each(function () { elements.push(this); });
+            pinchG.selectAll("line.block").filter(d => names.indexOf(d.name) >= 0).each(function () { elements.push(this); });
             let [minX, maxX, minY, maxY] = findEnclosingBoundingBox(elements);
             let paddingRatio = 0.0,
                 horizontalPadding = paddingRatio * (maxX - minX),
