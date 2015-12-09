@@ -158,8 +158,7 @@ function pinchLayout(pinchData) {
     // Find multiplicity of adjacencies, so they can be drawn without overlap.
     var adjacencyMultiplicity = {};
     pinch.adjacencies.forEach(function (a) {
-        var min = d3.min([a.source.block.name, a.target.block.name]);
-        var max = d3.max([a.source.block.name, a.target.block.name]);
+        let [min, max] = d3.extent([`${a.source.block.name}0`, `${a.target.block.name}1`]);
         adjacencyMultiplicity[min] = adjacencyMultiplicity[min] || {};
         adjacencyMultiplicity[min][max] = adjacencyMultiplicity[min][max] || [];
         adjacencyMultiplicity[min][max].push(a);
