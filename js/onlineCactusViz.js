@@ -18,7 +18,6 @@ function findEnclosingBoundingBox(elements) {
 }
 
 function zoomToBox(zoom, x1, x2, y1, y2) {
-    console.log(x1, x2, y1, y2);
     // Ensure that we can't get negative values for x2 - x1 and y2 - y1.
     [x1, x2] = d3.extent([x1, x2]);
     [y1, y2] = d3.extent([y1, y2]);
@@ -55,14 +54,14 @@ function mouseoverNode(d) {
     node.append('text')
         .attr('class', 'shadow')
         .attr('dx', d => d.children ? -8 : 8)
-        .attr('dy', 3)
+        .attr('dy', 20)
         .attr('text-anchor', d => d.children ? 'end' : 'start')
         .text(text);
 
     node.append('text')
         .attr('class', 'label')
         .attr('dx', d => d.children ? -8 : 8)
-        .attr('dy', 3)
+        .attr('dy', 20)
         .attr('text-anchor', d => d.children ? 'end' : 'start')
         .text(text);
 
@@ -77,11 +76,19 @@ function mouseoutNode() {
     node.selectAll('text').remove();
 }
 
+function addTextInLines(d3TextSelection, text) {
+    let lines = text.split('\n');
+    lines.forEach(function (line) {
+        d3TextSelection.append('tspan')
+            .attr('x', d3TextSelection.attr('x'))
+            .attr('dy', '1.4em')
+            .text(line);
+    });
+}
+
 function mouseoverBlock(d) {
     var block = d3.selectAll('g.block').filter(d2 => d.name === d2.name);
     block.select('.block').classed('active', true);
-
-    let text;
 
     block.append('text')
          .attr('class', 'label')
@@ -102,14 +109,6 @@ function mouseoutBlock(d) {
     var block = d3.selectAll('.block').filter(d2 => d.name === d2.name);
     block.select('.block').classed('active', false);
     block.selectAll('text').remove();
-}
-
-function mouseoverAdjacency() {
-    d3.select(this).classed('active', true);
-}
-
-function mouseoutAdjacency() {
-    d3.select(this).classed('active', false);
 }
 
 function pinchLayout(pinchData) {
@@ -147,6 +146,8 @@ function pinchLayout(pinchData) {
                                           s => [s, d3.min([Math.abs(s.start - segment.end),
                                                            Math.abs(s.end - segment.start)])],
                                           function (e) { return e[1]; })[0];
+                adjacency.sourceSegment = segment;
+                adjacency.targetSegment = otherSegment;
                 if (segment.blockOrientation === '+') {
                     adjacency.source = segment.block.end1;
                 } else {
@@ -276,9 +277,14 @@ function parseCactusDump(lines) {
         }
         return ret;
     }
+    let pinchedRegions = [];
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
         var fields = line.split('\t');
+        if (fields[0] === 'PINCH') {
+            pinchedRegions.push({ name: fields[1], start: +fields[2], end: +fields[3] });
+            pinchedRegions.push({ name: fields[4], start: +fields[5], end: +fields[6] });
+        }
         if (fields[0] === 'C') {
             cactusTrees.push(newick.parseNewick(fields[1]));
         }
@@ -307,7 +313,8 @@ function parseCactusDump(lines) {
     return { cactusTrees: cactusTrees,
              componentToNet: componentToNet,
              netToComponents: netToComponents,
-             pinchData: pinchGraph };
+             pinchData: pinchGraph,
+             pinchedRegions: pinchedRegions };
 }
 
 function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
@@ -339,12 +346,46 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
         .attr('d', 'M0,0 L0,4 L4,2 L0,0')
         .style('opacity', 0.8);
 
+    function mouseoverAdjacency(d) {
+        d3.select(this).classed('active', true);
+        let [x, y] = d3.mouse(pinchG.node());
+        let textElement = pinchG.append('text').attr('x', x).attr('y', y + 30).attr('class', 'label');
+        addTextInLines(textElement, `thread: ${d.threadId}
+                                     start: ${d.sourceSegment.end}
+                                     end: ${d.targetSegment.start}
+                                     length: ${d.length}`);
+    }
+
+    function mouseoutAdjacency() {
+        d3.select(this).classed('active', false);
+        pinchG.selectAll('.label').remove();
+    }
+
     var zoomContainer = pinchG.append('g');
 
     // Need to keep a list of the threads here--otherwise the color
     // for a particular thread can change if new threads are added.
     let pinchThreads = [];
     return {
+        setPinchedRegions: function setPinchedRegions(pinches) {
+            pinchG.selectAll('path.adjacency').classed('pinched', false);
+            pinchG.selectAll('line.block').classed('pinched', false);
+            function doesRegionOverlapPinch(threadId, start, end, pinch) {
+                return threadId === pinch.name && ((start >= pinch.start && start < pinch.end) || (end > pinch.start && end <= pinch.end));
+            }
+            pinches.forEach(function (pinch) {
+                console.log(pinchG.selectAll('path.adjacency')
+                    .filter(d => doesRegionOverlapPinch(d.threadId, d.sourceSegment.end, d.targetSegment.start, pinch))
+                    .classed('pinched', true).size());
+                console.log(pinchG.selectAll('line.block')
+                    .filter(function (d) {
+                        return d.segments.some(function (segment) {
+                            return doesRegionOverlapPinch(segment.threadId, segment.start, segment.end, pinch);
+                        });
+                    })
+                    .classed('pinched', true).size());
+            });
+        },
         zoomToBlocks: function zoomToBlocks(names) {
             let elements = [];
             pinchG.selectAll("line.block").filter(d => names.indexOf(d.name) >= 0).each(function () { elements.push(this); });

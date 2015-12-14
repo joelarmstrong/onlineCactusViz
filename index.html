@@ -37,6 +37,10 @@
          pointer-events: stroke;
      }
 
+     .adjacency.pinched {
+         stroke-dasharray: 8,2;
+     }
+
      .adjacency.active {
          stroke-dasharray: none;
          stroke-width: 4px;
@@ -46,6 +50,10 @@
          fill: none;
          stroke: #000;
          stroke-width: 2px;
+     }
+
+     .block.pinched {
+         stroke: purple;
      }
 
      .block.active {
@@ -65,9 +73,12 @@
         <input id="previous-step" type="button" value="Previous step"/>
         <input id="next-step" type="button" value="Next step"/>
         <input id="arrowheads" type="checkbox">Pinch adjacency arrowheads</input>
+        <input id="previewNextPinch" type="checkbox">Highlight next pinch instead of current</input>
         <p id="curStepInfo"></p>
+        <br>
+        <input id="play" type="button" value="Play"></input>
         <script>
-         d3.text("/cactusDump", function (text) {
+         d3.text("http://hgwdev.cse.ucsc.edu/~jcarmstr/cactusDumps/removeNonUndoableChains_default_debugaaa-cactusDump", function (text) {
              var lines = text.split("\n");
              var liness = lines.reduce(function(a, l) {
                  var fields = l.split("\t");
@@ -84,7 +95,6 @@
              if (window.location.hash) {
                  curStepIndex = +window.location.hash.substring(1);
              }
-             var pinchArrowheads = false;
              function nextStep() {
                  curStepIndex++;
                  update();
@@ -94,12 +104,41 @@
                  update();
              }
              function update() {
+                 if (curStepIndex >= liness.length) {
+                     curStepIndex = liness.length - 1;
+                 }
+                 var pinchArrowheads = d3.select('#arrowheads').node().checked;
+                 var previewNextPinch = d3.select('#previewNextPinch').node().checked;
                  window.location.hash = curStepIndex;
                  var lines = liness[curStepIndex];
                  d3.select('#curStepInfo').text(lines[0]);
                  var cactusDump = parseCactusDump(lines);
                  cactusGraph.update(cactusDump.cactusTrees);
                  pinchGraph.update(cactusDump.pinchData, pinchArrowheads);
+
+                 if (previewNextPinch) {
+                     var i = curStepIndex + 1;
+                     lines = liness[i];
+                     while (i < liness.length && lines[0].split('\t')[0] != 'BATCH') {
+                         i++;
+                         lines = liness[i];
+                     }
+                     if (i != liness.length) {
+                         pinchedRegions = parseCactusDump(lines).pinchedRegions;
+                         console.log(pinchedRegions.length, pinchedRegions[0]);
+                         pinchGraph.setPinchedRegions(pinchedRegions);
+                     }
+                 } else {
+                     var i = curStepIndex;
+                     while (lines[0].split('\t')[0] != 'BATCH') {
+                         i--;
+                         lines = liness[i];
+                     }
+                     pinchedRegions = parseCactusDump(lines).pinchedRegions;
+                     console.log(pinchedRegions.length, pinchedRegions[0]);
+                     pinchGraph.setPinchedRegions(pinchedRegions);
+                 }
+
                  d3.selectAll('line.block').on('click', function(d) {
                      cactusGraph.zoomToBlock(d.name);
                  });
@@ -149,13 +188,21 @@
                      pinchGraph.zoomToBlocks(names);
                  });
              }
-             function changeArrowheads() {
-                 pinchArrowheads = this.checked;
-                 update();
-             }
+
              d3.select('#next-step').on('click', nextStep);
              d3.select('#previous-step').on('click', prevStep);
-             d3.select('#arrowheads').on('change', changeArrowheads);
+             d3.select('#play').on('click', function playPause() {
+                 var curText = d3.select(this).attr('value');
+                 if (curText === 'Play') {
+                     d3.select(this).attr('value', 'Pause');
+                     playTimer = setInterval(nextStep, 1500);
+                 } else {
+                     d3.select(this).attr('value', 'Play');
+                     clearInterval(playTimer);
+                 }
+             })
+             d3.select('#arrowheads').on('change', update);
+             d3.select('#previewNextPinch').on('change', update);
              update();
          });
         </script>
