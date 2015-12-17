@@ -78,7 +78,7 @@
         <br>
         <input id="play" type="button" value="Play"></input>
         <script>
-         d3.text("http://hgwdev.cse.ucsc.edu/~jcarmstr/cactusDumps/removeNonUndoableChains_default_debugaaa-cactusDump", function (text) {
+         d3.text("http://hgwdev.cse.ucsc.edu/~jcarmstr/cactusDumps/defaultBlanchetteanancestor-cactusDump", function (text) {
              var lines = text.split("\n");
              var liness = lines.reduce(function(a, l) {
                  var fields = l.split("\t");
@@ -126,7 +126,7 @@
                      if (i != liness.length) {
                          pinchedRegions = parseCactusDump(lines).pinchedRegions;
                          console.log(pinchedRegions.length, pinchedRegions[0]);
-                         pinchGraph.setPinchedRegions(pinchedRegions);
+                         pinchGraph.setClassForRegions(pinchedRegions, 'pinched');
                      }
                  } else {
                      var i = curStepIndex;
@@ -136,7 +136,7 @@
                      }
                      pinchedRegions = parseCactusDump(lines).pinchedRegions;
                      console.log(pinchedRegions.length, pinchedRegions[0]);
-                     pinchGraph.setPinchedRegions(pinchedRegions);
+                     pinchGraph.setClassForRegions(pinchedRegions, 'pinched');
                  }
 
                  d3.selectAll('line.block').on('click', function(d) {

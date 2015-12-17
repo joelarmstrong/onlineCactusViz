@@ -367,23 +367,23 @@ function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {
     // for a particular thread can change if new threads are added.
     let pinchThreads = [];
     return {
-        setPinchedRegions: function setPinchedRegions(pinches) {
-            pinchG.selectAll('path.adjacency').classed('pinched', false);
-            pinchG.selectAll('line.block').classed('pinched', false);
-            function doesRegionOverlapPinch(threadId, start, end, pinch) {
-                return threadId === pinch.name && ((start >= pinch.start && start < pinch.end) || (end > pinch.start && end <= pinch.end));
+        setClassForRegions: function setClassForRegions(regions, classStr) {
+            pinchG.selectAll('path.adjacency').classed(classStr, false);
+            pinchG.selectAll('line.block').classed(classStr, false);
+            function doRegionsOverlap(threadId, start, end, region) {
+                return end - start > 0 && threadId === region.name && ((start >= region.start && start < region.end) || (end > region.start && end <= region.end));
             }
-            pinches.forEach(function (pinch) {
+            regions.forEach(function (region) {
                 console.log(pinchG.selectAll('path.adjacency')
-                    .filter(d => doesRegionOverlapPinch(d.threadId, d.sourceSegment.end, d.targetSegment.start, pinch))
-                    .classed('pinched', true).size());
+                    .filter(d => doRegionsOverlap(d.threadId, d.sourceSegment.end, d.targetSegment.start, region))
+                    .classed(classStr, true).size());
                 console.log(pinchG.selectAll('line.block')
                     .filter(function (d) {
                         return d.segments.some(function (segment) {
-                            return doesRegionOverlapPinch(segment.threadId, segment.start, segment.end, pinch);
+                            return doRegionsOverlap(segment.threadId, segment.start, segment.end, region);
                         });
                     })
-                    .classed('pinched', true).size());
+                    .classed(classStr, true).size());
             });
         },
         zoomToBlocks: function zoomToBlocks(names) {
