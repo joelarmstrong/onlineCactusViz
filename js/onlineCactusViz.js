@@ -278,17 +278,23 @@ function parseCactusDump(lines) {
         return ret;
     }
     let pinchedRegions = [];
+    let lastPinchStats = {};
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
         var fields = line.split('\t');
-        if (fields[0] === 'PINCH') {
+        switch(fields[0]) {
+        case 'PINCH':
             pinchedRegions.push({ name: fields[1], start: +fields[2], end: +fields[3] });
             pinchedRegions.push({ name: fields[4], start: +fields[5], end: +fields[6] });
-        }
-        if (fields[0] === 'C') {
+            break;
+        case 'TOTAL':
+            lastPinchStats.basesRemaining = +fields[1];
+            lastPinchStats.basesPinched = +fields[2];
+            break;
+        case 'C':
             cactusTrees.push(newick.parseNewick(fields[1]));
-        }
-        if (fields[0] === 'G') {
+            break;
+        case 'G':
             pinchGraph.blocks.push({ name: fields[1],
                                      segments: octuplets(fields.slice(2)).map(function (segment) {
                                          return { threadId: segment[0],
@@ -300,12 +306,13 @@ function parseCactusDump(lines) {
                                                   leftAdjComponent: segment[6],
                                                   rightAdjComponent: segment[7] };
                                      }) });
-        }
-        if (fields[0] === 'M') {
+            break;
+        case 'M':
             netToComponents[fields[1]] = fields.slice(2);
             fields.slice(2).forEach(function (node) {
                 componentToNet[node] = fields[1];
             });
+            break;
         }
     }
 
@@ -314,7 +321,8 @@ function parseCactusDump(lines) {
              componentToNet: componentToNet,
              netToComponents: netToComponents,
              pinchData: pinchGraph,
-             pinchedRegions: pinchedRegions };
+             pinchedRegions: pinchedRegions,
+             lastPinchStats: lastPinchStats };
 }
 
 function buildPinchGraph(margin={top: 80, right: 80, bottom: 80, left: 80}) {

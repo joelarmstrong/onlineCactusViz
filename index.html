@@ -75,6 +75,7 @@
         <input id="arrowheads" type="checkbox">Pinch adjacency arrowheads</input>
         <input id="previewNextPinch" type="checkbox">Highlight next pinch instead of current</input>
         <p id="curStepInfo"></p>
+        <p id="lastPinchStats"></p>
         <br>
         <input id="play" type="button" value="Play"></input>
         <script>
@@ -115,7 +116,9 @@
                  var cactusDump = parseCactusDump(lines);
                  cactusGraph.update(cactusDump.cactusTrees);
                  pinchGraph.update(cactusDump.pinchData, pinchArrowheads);
-
+                 if (cactusDump.lastPinchStats) {
+                     d3.select('#lastPinchStats').text('Pinch bases still included: ' + cactusDump.lastPinchStats.basesRemaining + '/' + cactusDump.lastPinchStats.basesPinched);
+                 }
                  if (previewNextPinch) {
                      var i = curStepIndex + 1;
                      lines = liness[i];
